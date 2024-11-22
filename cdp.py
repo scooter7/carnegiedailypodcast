@@ -1,17 +1,29 @@
+# Ensure pysqlite3-binary is used instead of sqlite3
+import sys
+import pysqlite3
+sys.modules["sqlite3"] = pysqlite3
+
+# Standard Python and library imports
 import os
-import json
-import openai
+import time
 import streamlit as st
-from pydub import AudioSegment
+from dotenv import load_dotenv
+from crewai import Agent, Task, Crew
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI
+import openai
+import json
 import re
+from pydub import AudioSegment
 
-# Set API keys
-openai.api_key = st.secrets["OPENAI_API_KEY"]
-os.environ["SERPER_API_KEY"] = st.secrets["SERPER_API_KEY"]
+# Load environment variables
+load_dotenv()
 
-# Initialize the SerperDevTool for news search
+# Set API keys (Streamlit secrets or local .env)
+openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
+os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
+
+# Initialize the SerperDevTool
 search_tool = SerperDevTool()
 
 # Configure speaker voices for podcast
