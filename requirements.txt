@@ -11,3 +11,4 @@ numpy
 nltk
 scikit-learn
 pydub
+pysqlite3-binary
