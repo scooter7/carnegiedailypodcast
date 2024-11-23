@@ -72,7 +72,7 @@ def parse_tool_output(api_response):
 def summarize_mentions(parsed_mentions):
     snippets = [mention["snippet"] for mention in parsed_mentions]
     summarized_text = " ".join(snippets)
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "Summarize the following news snippets for a podcast discussion."},
@@ -84,7 +84,7 @@ def summarize_mentions(parsed_mentions):
 # Generate podcast script
 def generate_script(summarized_text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
