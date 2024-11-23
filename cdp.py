@@ -14,6 +14,7 @@ from langchain_openai import ChatOpenAI
 import openai
 import json
 import re
+import requests
 from pydub import AudioSegment
 
 # Load environment variables
@@ -23,8 +24,11 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
 
-# Initialize the SerperDevTool
-search_tool = SerperDevTool()
+# Initialize SerperDevTool with API key (if available)
+try:
+    search_tool = SerperDevTool(api_key=os.environ["SERPER_API_KEY"])
+except Exception as e:
+    st.error(f"Error initializing SerperDevTool: {e}")
 
 # Configure speaker voices for podcast
 speaker_voice_map = {
@@ -44,16 +48,31 @@ Only return JSON without additional text or explanations.
 # Function to fetch marketing news mentions
 def fetch_mentions(query):
     try:
-        result = search_tool.search(query)
-        return result if result else ""
-    except Exception as e:
+        # Use Serper API directly as fallback
+        url = "https://serper.dev/api/search"
+        headers = {"Authorization": f"Bearer {os.environ['SERPER_API_KEY']}"}
+        payload = {"q": query}
+
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
         st.warning(f"Error fetching mentions: {e}")
-        return ""
+        return None
 
 # Parse tool output to extract structured mentions
-def parse_tool_output(tool_output):
-    entries = re.findall(r"Title: (.+?)\nLink: (.+?)\nSnippet: (.+?)(?=\n---|\Z)", tool_output, re.DOTALL)
-    return [{"title": title.strip(), "link": link.strip(), "snippet": snippet.strip()} for title, link, snippet in entries]
+def parse_tool_output(api_response):
+    if not api_response or "organic" not in api_response:
+        return []
+    
+    # Extract relevant fields from the Serper response
+    entries = api_response["organic"]
+    return [
+        {"title": entry.get("title", ""), 
+         "link": entry.get("link", ""), 
+         "snippet": entry.get("snippet", "")}
+        for entry in entries
+    ]
 
 # Summarize extracted mentions for script generation
 def summarize_mentions(parsed_mentions):
