@@ -47,16 +47,18 @@ Only return JSON without additional text or explanations.
 
 # Function to fetch marketing news mentions
 def fetch_mentions(query):
+def fetch_mentions(query):
     try:
-        # API URL for Serper
-        url = "https://serper.dev/api/search"
+        # Correct API URL for Serper
+        url = "https://google.serper.dev/search"
         headers = {
-            "Authorization": f"Bearer {os.environ['SERPER_API_KEY']}"
+            "X-API-KEY": os.environ['SERPER_API_KEY'],
+            "Content-Type": "application/json"
         }
-        params = {"q": query}  # Send query in URL parameters for GET request
+        payload = {"q": query}
 
-        # Make the GET request
-        response = requests.get(url, params=params, headers=headers)
+        # Make the POST request
+        response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()  # Raise an error for bad HTTP responses
 
         # Return the JSON response
@@ -64,20 +66,6 @@ def fetch_mentions(query):
     except requests.exceptions.RequestException as e:
         st.warning(f"Error fetching mentions: {e}")
         return None
-
-# Function to parse tool output
-def parse_tool_output(api_response):
-    if not api_response or "organic" not in api_response:
-        return []
-    
-    # Extract relevant fields from the Serper response
-    entries = api_response["organic"]
-    return [
-        {"title": entry.get("title", ""), 
-         "link": entry.get("link", ""), 
-         "snippet": entry.get("snippet", "")}
-        for entry in entries
-    ]
 
 # Summarize extracted mentions for script generation
 def summarize_mentions(parsed_mentions):
