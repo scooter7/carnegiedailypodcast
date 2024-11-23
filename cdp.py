@@ -51,13 +51,12 @@ def fetch_mentions(query):
         # API URL for Serper
         url = "https://serper.dev/api/search"
         headers = {
-            "Content-Type": "application/json",
             "Authorization": f"Bearer {os.environ['SERPER_API_KEY']}"
         }
-        payload = {"q": query}
+        params = {"q": query}  # Send query in URL parameters for GET request
 
-        # Make the POST request
-        response = requests.post(url, json=payload, headers=headers)
+        # Make the GET request
+        response = requests.get(url, params=params, headers=headers)
         response.raise_for_status()  # Raise an error for bad HTTP responses
 
         # Return the JSON response
