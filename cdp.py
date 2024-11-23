@@ -27,50 +27,13 @@ speaker_voice_map = {
 
 # System prompt for generating a podcast script
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate an engaging, relaxed conversation between Ali and Lisa.
+You are a podcast host for 'The Carnegie Daily' Generate an engaging, relaxed conversation between Ali and Lisa.
 The conversation should feel casual, with natural pauses, fillers like 'um,' and occasional 'you know' to sound conversational. 
 Avoid mentioning any tonal instructions directly in the conversation text.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
 Only return JSON without additional text, explanations, or formatting.
 """
-
-# Function to fetch mentions based on the user's query
-def fetch_mentions(query):
-    try:
-        # API URL for Serper
-        url = "https://google.serper.dev/search"
-        headers = {
-            "X-API-KEY": os.environ["SERPER_API_KEY"],
-            "Content-Type": "application/json"
-        }
-        payload = {"q": query}
-
-        # Make the POST request
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()  # Raise an error for bad HTTP responses
-
-        # Return the JSON response
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        st.warning(f"Error fetching mentions: {e}")
-        return None
-
-# Function to parse tool output
-def parse_tool_output(api_response):
-    """Parses the API response to extract mentions."""
-    if not api_response or "organic" not in api_response:
-        return []
-    
-    entries = api_response["organic"]
-    return [
-        {
-            "title": entry.get("title", ""),
-            "link": entry.get("link", ""),
-            "snippet": entry.get("snippet", "")
-        }
-        for entry in entries
-    ]
 
 # Generate podcast script with Ali and Lisa
 def generate_script(input_text):
@@ -107,8 +70,15 @@ def combine_audio(audio_segments):
     combined_audio.export(podcast_file, format="mp3")
     return podcast_file
 
+# Save script to text file
+def save_script_to_file(conversation_script, filename="podcast_script.txt"):
+    with open(filename, "w") as f:
+        for part in conversation_script:
+            f.write(f"{part['speaker']}: {part['text']}\n\n")
+    return filename
+
 # Streamlit app interface
-st.title("CX Overview Podcast Generator")
+st.title("The Carnegie Daily")
 st.write("Enter a topic to generate a podcast conversation between Ali and Lisa.")
 
 query = st.text_area("Enter the topic or discussion point for the podcast:")
@@ -118,6 +88,15 @@ if st.button("Generate Podcast"):
         st.write("Generating podcast script...")
         conversation_script = generate_script(query.strip())
         if conversation_script:
+            # Save script to file
+            script_filename = save_script_to_file(conversation_script)
+
+            # Display script
+            st.write("Generated Script:")
+            for part in conversation_script:
+                st.write(f"**{part['speaker']}**: {part['text']}")
+
+            # Generate podcast audio
             st.write("Generating podcast audio...")
             audio_segments = [
                 synthesize_speech(part["text"], part["speaker"], idx)
@@ -125,8 +104,11 @@ if st.button("Generate Podcast"):
             ]
             podcast_file = combine_audio(audio_segments)
             st.success("Podcast generated successfully!")
+
+            # Display audio and download buttons
             st.audio(podcast_file)
             st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+            st.download_button("Download Script", open(script_filename, "rb"), file_name="podcast_script.txt")
         else:
             st.error("Failed to generate the podcast script.")
     else:
