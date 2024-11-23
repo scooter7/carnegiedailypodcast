@@ -70,7 +70,7 @@ def parse_tool_output(api_response):
 def enrich_data_with_facts(parsed_mentions):
     snippets = [mention["snippet"] for mention in parsed_mentions]
     detailed_text = " ".join(snippets)
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "Summarize the following snippets into meaningful insights, including any relevant facts, statistics, and references."},
