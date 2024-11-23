@@ -25,24 +25,68 @@ speaker_voice_map = {
     "Ali": "onyx"
 }
 
-# System prompt for generating a podcast script
+# Updated system prompt for a news-oriented conversation
 system_prompt = """
-You are a podcast host for 'The Carnegie Daily' Generate an engaging, relaxed conversation between Ali and Lisa.
-The conversation should feel casual, with natural pauses, fillers like 'um,' and occasional 'you know' to sound conversational. 
-Avoid mentioning any tonal instructions directly in the conversation text.
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+Include relevant statistics, facts, and references to current events when available. 
+The conversation should still feel conversational and engaging, with natural pauses, fillers like 'um,' and occasional 'you know.'
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
 Only return JSON without additional text, explanations, or formatting.
 """
 
+# Function to fetch news articles using Serper with "news" type
+def fetch_news_mentions(query):
+    try:
+        url = "https://google.serper.dev/search"
+        headers = {
+            "X-API-KEY": os.environ["SERPER_API_KEY"],
+            "Content-Type": "application/json"
+        }
+        payload = {"q": query, "type": "news"}  # Specify the "news" type
+
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        st.warning(f"Error fetching news mentions: {e}")
+        return None
+
+# Function to parse tool output
+def parse_tool_output(api_response):
+    if not api_response or "news" not in api_response:
+        return []
+    entries = api_response["news"]  # Use "news" key for news-specific results
+    return [
+        {
+            "title": entry.get("title", ""),
+            "link": entry.get("link", ""),
+            "snippet": entry.get("snippet", "")
+        }
+        for entry in entries
+    ]
+
+# Summarize and enrich the data with OpenAI
+def enrich_data_with_facts(parsed_mentions):
+    snippets = [mention["snippet"] for mention in parsed_mentions]
+    detailed_text = " ".join(snippets)
+    response = openai.ChatCompletion.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Summarize the following snippets into meaningful insights, including any relevant facts, statistics, and references."},
+            {"role": "user", "content": detailed_text}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
 # Generate podcast script with Ali and Lisa
-def generate_script(input_text):
+def generate_script(enriched_text):
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": input_text}
+                {"role": "user", "content": enriched_text}
             ]
         )
         return json.loads(response.choices[0].message.content)
@@ -79,37 +123,44 @@ def save_script_to_file(conversation_script, filename="podcast_script.txt"):
 
 # Streamlit app interface
 st.title("The Carnegie Daily")
-st.write("Enter a topic to generate a podcast conversation between Ali and Lisa.")
+st.write("Generate a fact-based, news-oriented podcast conversation between Ali and Lisa.")
 
 query = st.text_area("Enter the topic or discussion point for the podcast:")
 
 if st.button("Generate Podcast"):
     if query.strip():
-        st.write("Generating podcast script...")
-        conversation_script = generate_script(query.strip())
-        if conversation_script:
-            # Save script to file
-            script_filename = save_script_to_file(conversation_script)
+        st.write("Fetching news articles...")
+        raw_mentions = fetch_news_mentions(query.strip())
+        parsed_mentions = parse_tool_output(raw_mentions)
+        if parsed_mentions:
+            st.write("Enriching content with facts and insights...")
+            enriched_text = enrich_data_with_facts(parsed_mentions)
+            st.write("Generating podcast script...")
+            conversation_script = generate_script(enriched_text)
+            if conversation_script:
+                script_filename = save_script_to_file(conversation_script)
 
-            # Display script
-            st.write("Generated Script:")
-            for part in conversation_script:
-                st.write(f"**{part['speaker']}**: {part['text']}")
+                # Display script
+                st.write("Generated Script:")
+                for part in conversation_script:
+                    st.write(f"**{part['speaker']}**: {part['text']}")
 
-            # Generate podcast audio
-            st.write("Generating podcast audio...")
-            audio_segments = [
-                synthesize_speech(part["text"], part["speaker"], idx)
-                for idx, part in enumerate(conversation_script)
-            ]
-            podcast_file = combine_audio(audio_segments)
-            st.success("Podcast generated successfully!")
+                # Generate podcast audio
+                st.write("Generating podcast audio...")
+                audio_segments = [
+                    synthesize_speech(part["text"], part["speaker"], idx)
+                    for idx, part in enumerate(conversation_script)
+                ]
+                podcast_file = combine_audio(audio_segments)
+                st.success("Podcast generated successfully!")
 
-            # Display audio and download buttons
-            st.audio(podcast_file)
-            st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-            st.download_button("Download Script", open(script_filename, "rb"), file_name="podcast_script.txt")
+                # Display audio and download buttons
+                st.audio(podcast_file)
+                st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+                st.download_button("Download Script", open(script_filename, "rb"), file_name="podcast_script.txt")
+            else:
+                st.error("Failed to generate the podcast script.")
         else:
-            st.error("Failed to generate the podcast script.")
+            st.error("No relevant news articles found for the given query.")
     else:
         st.error("Please enter a topic to proceed.")
