@@ -8,12 +8,9 @@ import os
 import time
 import streamlit as st
 from dotenv import load_dotenv
-from crewai import Agent, Task, Crew
 from crewai_tools import SerperDevTool
-from langchain_openai import ChatOpenAI
 import openai
 import json
-import re
 import requests
 from pydub import AudioSegment
 
@@ -23,18 +20,6 @@ load_dotenv()
 # Set API keys (Streamlit secrets or local .env)
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
-
-# Initialize SerperDevTool with API key (if available)
-try:
-    search_tool = SerperDevTool(api_key=os.environ["SERPER_API_KEY"])
-except Exception as e:
-    st.error(f"Error initializing SerperDevTool: {e}")
-
-# Configure speaker voices for podcast
-speaker_voice_map = {
-    "Lisa": "alloy",
-    "Ali": "onyx"
-}
 
 # System prompt for generating a podcast script
 system_prompt = """
@@ -48,10 +33,10 @@ Only return JSON without additional text or explanations.
 # Function to fetch marketing news mentions
 def fetch_mentions(query):
     try:
-        # Correct API URL for Serper
+        # API URL for Serper
         url = "https://google.serper.dev/search"
         headers = {
-            "X-API-KEY": os.environ['SERPER_API_KEY'],
+            "X-API-KEY": os.environ["SERPER_API_KEY"],
             "Content-Type": "application/json"
         }
         payload = {"q": query}
@@ -65,6 +50,23 @@ def fetch_mentions(query):
     except requests.exceptions.RequestException as e:
         st.warning(f"Error fetching mentions: {e}")
         return None
+
+# Function to parse tool output
+def parse_tool_output(api_response):
+    """Parses the API response to extract mentions."""
+    if not api_response or "organic" not in api_response:
+        return []
+    
+    # Extract relevant fields from the response
+    entries = api_response["organic"]
+    return [
+        {
+            "title": entry.get("title", ""),
+            "link": entry.get("link", ""),
+            "snippet": entry.get("snippet", "")
+        }
+        for entry in entries
+    ]
 
 # Summarize extracted mentions for script generation
 def summarize_mentions(parsed_mentions):
@@ -101,7 +103,7 @@ def synthesize_speech(text, speaker, index):
     file_path = os.path.join(audio_dir, f"{index:03d}_{speaker}.mp3")
     response = openai.audio.speech.create(
         model="tts-1",
-        voice=speaker_voice_map[speaker],
+        voice="onyx",
         input=text
     )
     response.stream_to_file(file_path)
