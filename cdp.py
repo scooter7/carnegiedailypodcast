@@ -47,16 +47,20 @@ Only return JSON without additional text or explanations.
 
 # Function to fetch marketing news mentions
 def fetch_mentions(query):
+def fetch_mentions(query):
     try:
         # API URL for Serper
         url = "https://serper.dev/api/search"
-        headers = {"Authorization": f"Bearer {os.environ['SERPER_API_KEY']}"}
-        params = {"q": query}  # Query parameters for GET request
+        headers = {
+            "Content-Type": "application/json",
+            "X-API-KEY": os.environ["SERPER_API_KEY"]
+        }
+        payload = {"q": query}
 
-        # Make the GET request
-        response = requests.get(url, params=params, headers=headers)
+        # Make the POST request
+        response = requests.post(url, json=payload, headers=headers)
         response.raise_for_status()  # Raise an error for bad HTTP responses
-        
+
         # Return the JSON response
         return response.json()
     except requests.exceptions.RequestException as e:
