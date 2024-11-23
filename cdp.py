@@ -27,7 +27,7 @@ speaker_voice_map = {
 
 # Updated system prompt for a news-oriented conversation
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+You are a podcast host for 'The Carnegie Daily.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
 Include relevant statistics, facts, and references to current events when available. 
 The conversation should still feel conversational and engaging, with natural pauses, fillers like 'um,' and occasional 'you know.'
 
@@ -125,6 +125,14 @@ def save_script_to_file(conversation_script, filename="podcast_script.txt"):
 st.title("The Carnegie Daily")
 st.write("Generate a fact-based, news-oriented podcast conversation between Ali and Lisa.")
 
+# Initialize session state
+if "conversation_script" not in st.session_state:
+    st.session_state.conversation_script = None
+if "podcast_file" not in st.session_state:
+    st.session_state.podcast_file = None
+if "script_filename" not in st.session_state:
+    st.session_state.script_filename = None
+
 query = st.text_area("Enter the topic or discussion point for the podcast:")
 
 if st.button("Generate Podcast"):
@@ -138,12 +146,8 @@ if st.button("Generate Podcast"):
             st.write("Generating podcast script...")
             conversation_script = generate_script(enriched_text)
             if conversation_script:
-                script_filename = save_script_to_file(conversation_script)
-
-                # Display script
-                st.write("Generated Script:")
-                for part in conversation_script:
-                    st.write(f"**{part['speaker']}**: {part['text']}")
+                st.session_state.conversation_script = conversation_script
+                st.session_state.script_filename = save_script_to_file(conversation_script)
 
                 # Generate podcast audio
                 st.write("Generating podcast audio...")
@@ -151,16 +155,30 @@ if st.button("Generate Podcast"):
                     synthesize_speech(part["text"], part["speaker"], idx)
                     for idx, part in enumerate(conversation_script)
                 ]
-                podcast_file = combine_audio(audio_segments)
+                st.session_state.podcast_file = combine_audio(audio_segments)
                 st.success("Podcast generated successfully!")
-
-                # Display audio and download buttons
-                st.audio(podcast_file)
-                st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-                st.download_button("Download Script", open(script_filename, "rb"), file_name="podcast_script.txt")
-            else:
-                st.error("Failed to generate the podcast script.")
         else:
             st.error("No relevant news articles found for the given query.")
     else:
         st.error("Please enter a topic to proceed.")
+
+# Display generated script and provide download options
+if st.session_state.conversation_script:
+    st.write("Generated Script:")
+    for part in st.session_state.conversation_script:
+        st.write(f"**{part['speaker']}**: {part['text']}")
+    if st.session_state.script_filename:
+        st.download_button(
+            "Download Script",
+            open(st.session_state.script_filename, "rb"),
+            file_name="podcast_script.txt"
+        )
+
+# Provide podcast download button
+if st.session_state.podcast_file:
+    st.audio(st.session_state.podcast_file)
+    st.download_button(
+        "Download Podcast",
+        open(st.session_state.podcast_file, "rb"),
+        file_name="podcast.mp3"
+    )
