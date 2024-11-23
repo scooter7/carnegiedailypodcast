@@ -5,10 +5,8 @@ sys.modules["sqlite3"] = pysqlite3
 
 # Standard Python and library imports
 import os
-import time
 import streamlit as st
 from dotenv import load_dotenv
-from crewai_tools import SerperDevTool
 import openai
 import json
 import requests
@@ -21,16 +19,23 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
 
+# Configure speaker voices
+speaker_voice_map = {
+    "Lisa": "alloy",
+    "Ali": "onyx"
+}
+
 # System prompt for generating a podcast script
 system_prompt = """
-You are a podcast host for 'Higher Ed Marketing Insights.' Generate an engaging, conversational script between Ali and Lisa, summarizing key insights on higher education marketing news. 
-The conversation should feel casual and informative, with natural pauses and fillers like 'you know' to sound conversational.
+You are a podcast host for 'CX Overview.' Generate an engaging, relaxed conversation between Ali and Lisa.
+The conversation should feel casual, with natural pauses, fillers like 'um,' and occasional 'you know' to sound conversational. 
+Avoid mentioning any tonal instructions directly in the conversation text.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
-Only return JSON without additional text or explanations.
+Only return JSON without additional text, explanations, or formatting.
 """
 
-# Function to fetch marketing news mentions
+# Function to fetch mentions based on the user's query
 def fetch_mentions(query):
     try:
         # API URL for Serper
@@ -57,7 +62,6 @@ def parse_tool_output(api_response):
     if not api_response or "organic" not in api_response:
         return []
     
-    # Extract relevant fields from the response
     entries = api_response["organic"]
     return [
         {
@@ -68,27 +72,14 @@ def parse_tool_output(api_response):
         for entry in entries
     ]
 
-# Summarize extracted mentions for script generation
-def summarize_mentions(parsed_mentions):
-    snippets = [mention["snippet"] for mention in parsed_mentions]
-    summarized_text = " ".join(snippets)
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "Summarize the following news snippets for a podcast discussion."},
-            {"role": "user", "content": summarized_text}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
-# Generate podcast script
-def generate_script(summarized_text):
+# Generate podcast script with Ali and Lisa
+def generate_script(input_text):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": summarized_text}
+                {"role": "user", "content": input_text}
             ]
         )
         return json.loads(response.choices[0].message.content)
@@ -96,14 +87,14 @@ def generate_script(summarized_text):
         st.error(f"Error generating script: {e}")
         return []
 
-# Synthesize speech from text for each speaker
+# Synthesize speech for both speakers
 def synthesize_speech(text, speaker, index):
     audio_dir = "audio-files"
     os.makedirs(audio_dir, exist_ok=True)
     file_path = os.path.join(audio_dir, f"{index:03d}_{speaker}.mp3")
     response = openai.audio.speech.create(
         model="tts-1",
-        voice="onyx",
+        voice=speaker_voice_map[speaker],
         input=text
     )
     response.stream_to_file(file_path)
@@ -117,32 +108,26 @@ def combine_audio(audio_segments):
     return podcast_file
 
 # Streamlit app interface
-st.title("Higher Education Marketing Podcast Generator")
-st.write("Fetch the latest marketing news and create a podcast discussing the insights.")
+st.title("CX Overview Podcast Generator")
+st.write("Enter a topic to generate a podcast conversation between Ali and Lisa.")
 
-query = st.text_input("Enter your query (e.g., 'higher education marketing news')")
+query = st.text_area("Enter the topic or discussion point for the podcast:")
 
 if st.button("Generate Podcast"):
-    if query:
-        st.write("Fetching and summarizing news...")
-        raw_mentions = fetch_mentions(query)
-        parsed_mentions = parse_tool_output(raw_mentions)
-        if parsed_mentions:
-            summarized_text = summarize_mentions(parsed_mentions)
-            conversation_script = generate_script(summarized_text)
-            if conversation_script:
-                st.write("Generating podcast audio...")
-                audio_segments = [
-                    synthesize_speech(part["text"], part["speaker"], idx)
-                    for idx, part in enumerate(conversation_script)
-                ]
-                podcast_file = combine_audio(audio_segments)
-                st.success("Podcast generated successfully!")
-                st.audio(podcast_file)
-                st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-            else:
-                st.error("Failed to generate the podcast script.")
+    if query.strip():
+        st.write("Generating podcast script...")
+        conversation_script = generate_script(query.strip())
+        if conversation_script:
+            st.write("Generating podcast audio...")
+            audio_segments = [
+                synthesize_speech(part["text"], part["speaker"], idx)
+                for idx, part in enumerate(conversation_script)
+            ]
+            podcast_file = combine_audio(audio_segments)
+            st.success("Podcast generated successfully!")
+            st.audio(podcast_file)
+            st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
         else:
-            st.error("No news mentions found for the given query.")
+            st.error("Failed to generate the podcast script.")
     else:
-        st.error("Please enter a query to proceed.")
+        st.error("Please enter a topic to proceed.")
