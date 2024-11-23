@@ -75,7 +75,7 @@ def parse_tool_output(api_response):
 # Generate podcast script with Ali and Lisa
 def generate_script(input_text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
