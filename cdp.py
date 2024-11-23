@@ -47,7 +47,6 @@ Only return JSON without additional text or explanations.
 
 # Function to fetch marketing news mentions
 def fetch_mentions(query):
-def fetch_mentions(query):
     try:
         # API URL for Serper
         url = "https://serper.dev/api/search"
