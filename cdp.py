@@ -52,7 +52,7 @@ def fetch_mentions(query):
         url = "https://serper.dev/api/search"
         headers = {
             "Content-Type": "application/json",
-            "X-API-KEY": os.environ["SERPER_API_KEY"]
+            "Authorization": f"Bearer {os.environ['SERPER_API_KEY']}"
         }
         payload = {"q": query}
 
@@ -65,21 +65,6 @@ def fetch_mentions(query):
     except requests.exceptions.RequestException as e:
         st.warning(f"Error fetching mentions: {e}")
         return None
-
-# Parse tool output to extract structured mentions
-def parse_tool_output(api_response):
-    if not api_response or "organic" not in api_response:
-        return []
-    
-    # Extract relevant fields from the Serper response
-    entries = api_response["organic"]
-    return [
-        {"title": entry.get("title", ""), 
-         "link": entry.get("link", ""), 
-         "snippet": entry.get("snippet", "")}
-        for entry in entries
-    ]
-
 # Summarize extracted mentions for script generation
 def summarize_mentions(parsed_mentions):
     snippets = [mention["snippet"] for mention in parsed_mentions]
