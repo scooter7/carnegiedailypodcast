@@ -11,7 +11,6 @@ import openai
 import json
 import requests
 from pydub import AudioSegment
-from elevenlabs import play
 from elevenlabs.client import ElevenLabs
 import tempfile
 
@@ -104,14 +103,6 @@ def generate_script(enriched_text):
 
 # Synthesize speech using ElevenLabs client
 def synthesize_cloned_voice(text, speaker):
-    """
-    Synthesizes speech using ElevenLabs Multilingual v2 model.
-    Args:
-        text: The text to synthesize.
-        speaker: The speaker's voice ID or name.
-    Returns:
-        AudioSegment: The generated audio file as an AudioSegment object.
-    """
     try:
         # Generate audio using ElevenLabs
         audio = elevenlabs_client.generate(
@@ -163,18 +154,23 @@ if st.button("Generate Podcast"):
             conversation_script = generate_script(enriched_text)
             if conversation_script:
                 st.write("Generating podcast audio...")
-                audio_segments = [
-                    synthesize_cloned_voice(part["text"], part["speaker"])
-                    for part in conversation_script
-                ]
-                podcast_file = combine_audio(audio_segments)
-                st.success("Podcast generated successfully!")
-
-                # Display audio and download buttons
-                st.audio(podcast_file)
-                st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-                script_file = save_script_to_file(conversation_script)
-                st.download_button("Download Script", open(script_file, "rb"), file_name="podcast_script.txt")
+                audio_segments = []
+                for idx, part in enumerate(conversation_script):
+                    audio = synthesize_cloned_voice(part["text"], part["speaker"])
+                    if audio:
+                        audio_segments.append(audio)
+                    else:
+                        st.warning(f"Failed to synthesize audio for part {idx + 1}: {part['speaker']} says: {part['text']}")
+                
+                if audio_segments:
+                    podcast_file = combine_audio(audio_segments)
+                    st.success("Podcast generated successfully!")
+                    st.audio(podcast_file)
+                    st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+                    script_file = save_script_to_file(conversation_script)
+                    st.download_button("Download Script", open(script_file, "rb"), file_name="podcast_script.txt")
+                else:
+                    st.error("Failed to generate any audio for the podcast.")
             else:
                 st.error("Failed to generate the podcast script.")
         else:
