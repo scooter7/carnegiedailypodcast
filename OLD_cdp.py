@@ -11,23 +11,30 @@ import openai
 import json
 import requests
 from pydub import AudioSegment
+from elevenlabs.client import ElevenLabs
+import tempfile
 
 # Load environment variables
 load_dotenv()
 
 # Set API keys (Streamlit secrets or local .env)
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
-os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
+serper_api_key = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
+
+# Initialize ElevenLabs client
+elevenlabs_client = ElevenLabs(
+    api_key=os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"]
+)
 
 # Configure speaker voices
 speaker_voice_map = {
-    "Lisa": "alloy",
-    "Ali": "onyx"
+    "Lisa": "Rachel",  # Replace with appropriate voice name
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the ID of your cloned voice
 }
 
 # Updated system prompt for a news-oriented conversation
 system_prompt = """
-You are a podcast host for 'The Carnegie Daily.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
 Include relevant statistics, facts, and references to current events when available. 
 The conversation should still feel conversational and engaging, with natural pauses, fillers like 'um,' and occasional 'you know.'
 
@@ -35,12 +42,12 @@ Format the response **strictly** as a JSON array of objects, each with 'speaker'
 Only return JSON without additional text, explanations, or formatting.
 """
 
-# Function to fetch news articles using Serper with "news" type
+# Function to fetch news articles using Serper
 def fetch_news_mentions(query):
     try:
         url = "https://google.serper.dev/search"
         headers = {
-            "X-API-KEY": os.environ["SERPER_API_KEY"],
+            "X-API-KEY": serper_api_key,
             "Content-Type": "application/json"
         }
         payload = {"q": query, "type": "news"}  # Specify the "news" type
@@ -56,7 +63,7 @@ def fetch_news_mentions(query):
 def parse_tool_output(api_response):
     if not api_response or "news" not in api_response:
         return []
-    entries = api_response["news"]  # Use "news" key for news-specific results
+    entries = api_response["news"]
     return [
         {
             "title": entry.get("title", ""),
@@ -94,20 +101,39 @@ def generate_script(enriched_text):
         st.error(f"Error generating script: {e}")
         return []
 
-# Synthesize speech for both speakers
-def synthesize_speech(text, speaker, index):
-    audio_dir = "audio-files"
-    os.makedirs(audio_dir, exist_ok=True)
-    file_path = os.path.join(audio_dir, f"{index:03d}_{speaker}.mp3")
-    response = openai.audio.speech.create(
-        model="tts-1",
-        voice=speaker_voice_map[speaker],
-        input=text
-    )
-    response.stream_to_file(file_path)
-    return AudioSegment.from_file(file_path)
+# Synthesize speech using ElevenLabs client
+def synthesize_cloned_voice(text, speaker):
+    """
+    Synthesizes speech using ElevenLabs Multilingual v2 model.
+    Args:
+        text: The text to synthesize.
+        speaker: The speaker's voice ID or name.
+    Returns:
+        AudioSegment: The generated audio file as an AudioSegment object.
+    """
+    try:
+        # Generate audio using ElevenLabs
+        audio_generator = elevenlabs_client.generate(
+            text=text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_multilingual_v2"
+        )
+        
+        # Combine the streaming response into a single byte array
+        audio_content = b"".join(audio_generator)
 
-# Combine audio segments into a podcast
+        # Write the audio content to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
+            temp_audio_file.write(audio_content)
+            temp_audio_path = temp_audio_file.name
+        
+        # Load the audio as an AudioSegment object
+        return AudioSegment.from_file(temp_audio_path, format="mp3")
+    except Exception as e:
+        st.error(f"Error synthesizing speech with ElevenLabs for {speaker}: {e}")
+        return None
+
+# Combine audio into a podcast
 def combine_audio(audio_segments):
     combined_audio = sum(audio_segments, AudioSegment.empty())
     podcast_file = "podcast.mp3"
@@ -122,16 +148,8 @@ def save_script_to_file(conversation_script, filename="podcast_script.txt"):
     return filename
 
 # Streamlit app interface
-st.title("The Carnegie Daily")
+st.title("CX Overview Podcast Generator")
 st.write("Generate a fact-based, news-oriented podcast conversation between Ali and Lisa.")
-
-# Initialize session state
-if "conversation_script" not in st.session_state:
-    st.session_state.conversation_script = None
-if "podcast_file" not in st.session_state:
-    st.session_state.podcast_file = None
-if "script_filename" not in st.session_state:
-    st.session_state.script_filename = None
 
 query = st.text_area("Enter the topic or discussion point for the podcast:")
 
@@ -146,39 +164,27 @@ if st.button("Generate Podcast"):
             st.write("Generating podcast script...")
             conversation_script = generate_script(enriched_text)
             if conversation_script:
-                st.session_state.conversation_script = conversation_script
-                st.session_state.script_filename = save_script_to_file(conversation_script)
-
-                # Generate podcast audio
                 st.write("Generating podcast audio...")
-                audio_segments = [
-                    synthesize_speech(part["text"], part["speaker"], idx)
-                    for idx, part in enumerate(conversation_script)
-                ]
-                st.session_state.podcast_file = combine_audio(audio_segments)
-                st.success("Podcast generated successfully!")
+                audio_segments = []
+                for idx, part in enumerate(conversation_script):
+                    audio = synthesize_cloned_voice(part["text"], part["speaker"])
+                    if audio:
+                        audio_segments.append(audio)
+                    else:
+                        st.warning(f"Failed to synthesize audio for part {idx + 1}: {part['speaker']} says: {part['text']}")
+                
+                if audio_segments:
+                    podcast_file = combine_audio(audio_segments)
+                    st.success("Podcast generated successfully!")
+                    st.audio(podcast_file)
+                    st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+                    script_file = save_script_to_file(conversation_script)
+                    st.download_button("Download Script", open(script_file, "rb"), file_name="podcast_script.txt")
+                else:
+                    st.error("Failed to generate any audio for the podcast.")
+            else:
+                st.error("Failed to generate the podcast script.")
         else:
             st.error("No relevant news articles found for the given query.")
     else:
         st.error("Please enter a topic to proceed.")
-
-# Display generated script and provide download options
-if st.session_state.conversation_script:
-    st.write("Generated Script:")
-    for part in st.session_state.conversation_script:
-        st.write(f"**{part['speaker']}**: {part['text']}")
-    if st.session_state.script_filename:
-        st.download_button(
-            "Download Script",
-            open(st.session_state.script_filename, "rb"),
-            file_name="podcast_script.txt"
-        )
-
-# Provide podcast download button
-if st.session_state.podcast_file:
-    st.audio(st.session_state.podcast_file)
-    st.download_button(
-        "Download Podcast",
-        open(st.session_state.podcast_file, "rb"),
-        file_name="podcast.mp3"
-    )
