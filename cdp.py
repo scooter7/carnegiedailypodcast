@@ -11,6 +11,7 @@ import openai
 import json
 import requests
 from pydub import AudioSegment
+from elevenlabs import generate, set_api_key, save
 
 # Load environment variables
 load_dotenv()
@@ -18,16 +19,17 @@ load_dotenv()
 # Set API keys (Streamlit secrets or local .env)
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
 os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
+set_api_key(os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"])
 
 # Configure speaker voices
 speaker_voice_map = {
-    "Lisa": "alloy",
-    "Ali": "onyx"
+    "Lisa": "alloy",  # Default ElevenLabs voice for Lisa
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with your cloned ElevenLabs voice ID
 }
 
 # Updated system prompt for a news-oriented conversation
 system_prompt = """
-You are a podcast host for 'The Carnegie Daily.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
 Include relevant statistics, facts, and references to current events when available. 
 The conversation should still feel conversational and engaging, with natural pauses, fillers like 'um,' and occasional 'you know.'
 
@@ -70,7 +72,7 @@ def parse_tool_output(api_response):
 def enrich_data_with_facts(parsed_mentions):
     snippets = [mention["snippet"] for mention in parsed_mentions]
     detailed_text = " ".join(snippets)
-    response = openai.chat.completions.create(
+    response = openai.ChatCompletion.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "Summarize the following snippets into meaningful insights, including any relevant facts, statistics, and references."},
@@ -82,7 +84,7 @@ def enrich_data_with_facts(parsed_mentions):
 # Generate podcast script with Ali and Lisa
 def generate_script(enriched_text):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -94,18 +96,30 @@ def generate_script(enriched_text):
         st.error(f"Error generating script: {e}")
         return []
 
-# Synthesize speech for both speakers
-def synthesize_speech(text, speaker, index):
+# Synthesize speech using ElevenLabs cloned voice
+def synthesize_cloned_voice(text, speaker, index):
+    """
+    Synthesizes speech using ElevenLabs cloned voice.
+    Args:
+        text: The text to synthesize.
+        speaker: The speaker identifier (e.g., "Ali", "Lisa").
+        index: The index of the audio file for naming purposes.
+    Returns:
+        AudioSegment: The generated audio file as an AudioSegment object.
+    """
     audio_dir = "audio-files"
     os.makedirs(audio_dir, exist_ok=True)
     file_path = os.path.join(audio_dir, f"{index:03d}_{speaker}.mp3")
-    response = openai.audio.speech.create(
-        model="tts-1",
-        voice=speaker_voice_map[speaker],
-        input=text
-    )
-    response.stream_to_file(file_path)
-    return AudioSegment.from_file(file_path)
+
+    try:
+        # Use ElevenLabs to generate speech
+        voice_id = speaker_voice_map[speaker]
+        audio = generate(text=text, voice=voice_id)
+        save(audio, file_path)  # Save audio to file
+        return AudioSegment.from_file(file_path)
+    except Exception as e:
+        st.error(f"Error synthesizing speech with ElevenLabs for {speaker}: {e}")
+        return None
 
 # Combine audio segments into a podcast
 def combine_audio(audio_segments):
@@ -122,16 +136,8 @@ def save_script_to_file(conversation_script, filename="podcast_script.txt"):
     return filename
 
 # Streamlit app interface
-st.title("The Carnegie Daily")
+st.title("CX Overview Podcast Generator")
 st.write("Generate a fact-based, news-oriented podcast conversation between Ali and Lisa.")
-
-# Initialize session state
-if "conversation_script" not in st.session_state:
-    st.session_state.conversation_script = None
-if "podcast_file" not in st.session_state:
-    st.session_state.podcast_file = None
-if "script_filename" not in st.session_state:
-    st.session_state.script_filename = None
 
 query = st.text_area("Enter the topic or discussion point for the podcast:")
 
@@ -146,39 +152,22 @@ if st.button("Generate Podcast"):
             st.write("Generating podcast script...")
             conversation_script = generate_script(enriched_text)
             if conversation_script:
-                st.session_state.conversation_script = conversation_script
-                st.session_state.script_filename = save_script_to_file(conversation_script)
-
-                # Generate podcast audio
                 st.write("Generating podcast audio...")
                 audio_segments = [
-                    synthesize_speech(part["text"], part["speaker"], idx)
+                    synthesize_cloned_voice(part["text"], part["speaker"], idx)
                     for idx, part in enumerate(conversation_script)
                 ]
-                st.session_state.podcast_file = combine_audio(audio_segments)
+                podcast_file = combine_audio(audio_segments)
                 st.success("Podcast generated successfully!")
+
+                # Display audio and download buttons
+                st.audio(podcast_file)
+                st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+                script_file = save_script_to_file(conversation_script)
+                st.download_button("Download Script", open(script_file, "rb"), file_name="podcast_script.txt")
+            else:
+                st.error("Failed to generate the podcast script.")
         else:
             st.error("No relevant news articles found for the given query.")
     else:
         st.error("Please enter a topic to proceed.")
-
-# Display generated script and provide download options
-if st.session_state.conversation_script:
-    st.write("Generated Script:")
-    for part in st.session_state.conversation_script:
-        st.write(f"**{part['speaker']}**: {part['text']}")
-    if st.session_state.script_filename:
-        st.download_button(
-            "Download Script",
-            open(st.session_state.script_filename, "rb"),
-            file_name="podcast_script.txt"
-        )
-
-# Provide podcast download button
-if st.session_state.podcast_file:
-    st.audio(st.session_state.podcast_file)
-    st.download_button(
-        "Download Podcast",
-        open(st.session_state.podcast_file, "rb"),
-        file_name="podcast.mp3"
-    )
