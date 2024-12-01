@@ -13,6 +13,7 @@ import requests
 from pydub import AudioSegment
 from elevenlabs import play
 from elevenlabs.client import ElevenLabs
+import tempfile
 
 # Load environment variables
 load_dotenv()
@@ -29,7 +30,7 @@ elevenlabs_client = ElevenLabs(
 # Configure speaker voices
 speaker_voice_map = {
     "Lisa": "Rachel",  # Replace with appropriate voice name
-    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the name of your cloned voice
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the ID of your cloned voice
 }
 
 # Updated system prompt for a news-oriented conversation
@@ -118,7 +119,14 @@ def synthesize_cloned_voice(text, speaker):
             voice=speaker_voice_map[speaker],
             model="eleven_multilingual_v2"
         )
-        return audio
+        
+        # Write the audio to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
+            temp_audio_file.write(audio)
+            temp_audio_path = temp_audio_file.name
+        
+        # Load the audio as an AudioSegment object
+        return AudioSegment.from_file(temp_audio_path, format="mp3")
     except Exception as e:
         st.error(f"Error synthesizing speech with ElevenLabs for {speaker}: {e}")
         return None
@@ -156,9 +164,7 @@ if st.button("Generate Podcast"):
             if conversation_script:
                 st.write("Generating podcast audio...")
                 audio_segments = [
-                    AudioSegment.from_file(
-                        synthesize_cloned_voice(part["text"], part["speaker"])
-                    )
+                    synthesize_cloned_voice(part["text"], part["speaker"])
                     for part in conversation_script
                 ]
                 podcast_file = combine_audio(audio_segments)
