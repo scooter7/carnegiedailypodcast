@@ -83,7 +83,7 @@ def enrich_data_with_facts(parsed_mentions):
 # Generate podcast script with Ali and Lisa
 def generate_script(enriched_text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
