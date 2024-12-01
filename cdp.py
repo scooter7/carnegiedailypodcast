@@ -11,19 +11,21 @@ import openai
 import json
 import requests
 from pydub import AudioSegment
-from elevenlabs import generate, play
+from elevenlabs import generate, voices
 
 # Load environment variables
 load_dotenv()
 
 # Set API keys (Streamlit secrets or local .env)
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
+elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"]
 serper_api_key = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
 
-# Configure speaker voices
+# Fetch available voices from ElevenLabs
+available_voices = voices(api_key=elevenlabs_api_key)
 speaker_voice_map = {
-    "Lisa": "Rachel",  # Default ElevenLabs voice for Lisa
-    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the name of your cloned voice
+    "Lisa": available_voices[0].voice_id,  # Default voice for Lisa
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the ID of your cloned voice
 }
 
 # Updated system prompt for a news-oriented conversation
@@ -98,10 +100,10 @@ def generate_script(enriched_text):
 # Synthesize speech using ElevenLabs
 def synthesize_cloned_voice(text, speaker):
     """
-    Synthesizes speech using ElevenLabs.
+    Synthesizes speech using ElevenLabs Multilingual v2 model.
     Args:
         text: The text to synthesize.
-        speaker: The speaker identifier (e.g., "Ali", "Lisa").
+        speaker: The speaker's voice ID or name.
     Returns:
         AudioSegment: The generated audio file as an AudioSegment object.
     """
@@ -110,9 +112,14 @@ def synthesize_cloned_voice(text, speaker):
         audio = generate(
             text=text,
             voice=speaker_voice_map[speaker],
-            model="eleven_monolingual_v1"  # Ensure the correct model is specified
+            model="eleven_multilingual_v2",
+            api_key=elevenlabs_api_key,
+            settings={
+                "stability": 0.8,  # Stability of the voice
+                "similarity_boost": 0.75  # How closely it matches the voice
+            }
         )
-        return audio
+        return audio  # This is raw audio data
     except Exception as e:
         st.error(f"Error synthesizing speech with ElevenLabs for {speaker}: {e}")
         return None
