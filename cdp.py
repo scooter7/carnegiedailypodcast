@@ -11,20 +11,19 @@ import openai
 import json
 import requests
 from pydub import AudioSegment
-from elevenlabs import generate, set_api_key, save
+from elevenlabs import generate, play
 
 # Load environment variables
 load_dotenv()
 
 # Set API keys (Streamlit secrets or local .env)
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
-os.environ["SERPER_API_KEY"] = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
-set_api_key(os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"])
+serper_api_key = os.getenv("SERPER_API_KEY") or st.secrets["SERPER_API_KEY"]
 
 # Configure speaker voices
 speaker_voice_map = {
-    "Lisa": "alloy",  # Default ElevenLabs voice for Lisa
-    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with your cloned ElevenLabs voice ID
+    "Lisa": "Rachel",  # Default ElevenLabs voice for Lisa
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the name of your cloned voice
 }
 
 # Updated system prompt for a news-oriented conversation
@@ -37,12 +36,12 @@ Format the response **strictly** as a JSON array of objects, each with 'speaker'
 Only return JSON without additional text, explanations, or formatting.
 """
 
-# Function to fetch news articles using Serper with "news" type
+# Function to fetch news articles using Serper
 def fetch_news_mentions(query):
     try:
         url = "https://google.serper.dev/search"
         headers = {
-            "X-API-KEY": os.environ["SERPER_API_KEY"],
+            "X-API-KEY": serper_api_key,
             "Content-Type": "application/json"
         }
         payload = {"q": query, "type": "news"}  # Specify the "news" type
@@ -58,7 +57,7 @@ def fetch_news_mentions(query):
 def parse_tool_output(api_response):
     if not api_response or "news" not in api_response:
         return []
-    entries = api_response["news"]  # Use "news" key for news-specific results
+    entries = api_response["news"]
     return [
         {
             "title": entry.get("title", ""),
@@ -72,7 +71,7 @@ def parse_tool_output(api_response):
 def enrich_data_with_facts(parsed_mentions):
     snippets = [mention["snippet"] for mention in parsed_mentions]
     detailed_text = " ".join(snippets)
-    response = openai.ChatCompletion.create(
+    response = openai.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": "Summarize the following snippets into meaningful insights, including any relevant facts, statistics, and references."},
@@ -96,32 +95,29 @@ def generate_script(enriched_text):
         st.error(f"Error generating script: {e}")
         return []
 
-# Synthesize speech using ElevenLabs cloned voice
-def synthesize_cloned_voice(text, speaker, index):
+# Synthesize speech using ElevenLabs
+def synthesize_cloned_voice(text, speaker):
     """
-    Synthesizes speech using ElevenLabs cloned voice.
+    Synthesizes speech using ElevenLabs.
     Args:
         text: The text to synthesize.
         speaker: The speaker identifier (e.g., "Ali", "Lisa").
-        index: The index of the audio file for naming purposes.
     Returns:
         AudioSegment: The generated audio file as an AudioSegment object.
     """
-    audio_dir = "audio-files"
-    os.makedirs(audio_dir, exist_ok=True)
-    file_path = os.path.join(audio_dir, f"{index:03d}_{speaker}.mp3")
-
     try:
-        # Use ElevenLabs to generate speech
-        voice_id = speaker_voice_map[speaker]
-        audio = generate(text=text, voice=voice_id)
-        save(audio, file_path)  # Save audio to file
-        return AudioSegment.from_file(file_path)
+        # Generate audio using ElevenLabs
+        audio = generate(
+            text=text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_monolingual_v1"  # Ensure the correct model is specified
+        )
+        return audio
     except Exception as e:
         st.error(f"Error synthesizing speech with ElevenLabs for {speaker}: {e}")
         return None
 
-# Combine audio segments into a podcast
+# Combine audio into a podcast
 def combine_audio(audio_segments):
     combined_audio = sum(audio_segments, AudioSegment.empty())
     podcast_file = "podcast.mp3"
@@ -154,8 +150,10 @@ if st.button("Generate Podcast"):
             if conversation_script:
                 st.write("Generating podcast audio...")
                 audio_segments = [
-                    synthesize_cloned_voice(part["text"], part["speaker"], idx)
-                    for idx, part in enumerate(conversation_script)
+                    AudioSegment.from_file(
+                        synthesize_cloned_voice(part["text"], part["speaker"])
+                    )
+                    for part in conversation_script
                 ]
                 podcast_file = combine_audio(audio_segments)
                 st.success("Podcast generated successfully!")
