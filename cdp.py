@@ -103,17 +103,28 @@ def generate_script(enriched_text):
 
 # Synthesize speech using ElevenLabs client
 def synthesize_cloned_voice(text, speaker):
+    """
+    Synthesizes speech using ElevenLabs Multilingual v2 model.
+    Args:
+        text: The text to synthesize.
+        speaker: The speaker's voice ID or name.
+    Returns:
+        AudioSegment: The generated audio file as an AudioSegment object.
+    """
     try:
         # Generate audio using ElevenLabs
-        audio = elevenlabs_client.generate(
+        audio_generator = elevenlabs_client.generate(
             text=text,
             voice=speaker_voice_map[speaker],
             model="eleven_multilingual_v2"
         )
         
-        # Write the audio to a temporary file
+        # Combine the streaming response into a single byte array
+        audio_content = b"".join(audio_generator)
+
+        # Write the audio content to a temporary file
         with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
-            temp_audio_file.write(audio)
+            temp_audio_file.write(audio_content)
             temp_audio_path = temp_audio_file.name
         
         # Load the audio as an AudioSegment object
