@@ -13,3 +13,4 @@ scikit-learn
 pydub
 pysqlite3-binary
 elevenlabs
+beautifulsoup4
