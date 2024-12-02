@@ -125,18 +125,24 @@ def save_script_to_file(conversation_script, filename="podcast_script.txt"):
     return filename
 
 # Streamlit app interface
-st.title("CX Overview Podcast Generator")
-st.write("Enter a URL to generate a fact-based, news-oriented podcast.")
+st.title("CX College Profile Cast")
+st.write("Enter a CX Profile URL to generate a podcast that includes links to featured profiles when available.")
 
 parent_url = st.text_input("Enter the URL of the page:")
 
 if st.button("Generate Podcast"):
     if parent_url.strip():
         st.write("Fetching featured profile links...")
+        
+        # Include the main URL for scraping
         profile_links = fetch_featured_profiles(parent_url.strip())
+        profile_links.insert(0, parent_url.strip())  # Add the main URL to the list
+        
         if profile_links:
             all_summaries = []
             st.write("Scraping and summarizing content...")
+            
+            # Iterate over all links (including the main URL)
             for link in profile_links:
                 scraped_content = scrape_content(link)
                 if scraped_content:
@@ -144,6 +150,7 @@ if st.button("Generate Podcast"):
                     if summary:
                         all_summaries.append(summary)
             
+            # Generate podcast from all summaries
             enriched_text = " ".join(all_summaries)
             st.write("Generating podcast script...")
             conversation_script = generate_script(enriched_text)
@@ -173,3 +180,4 @@ if st.button("Generate Podcast"):
             st.error("No featured profiles found.")
     else:
         st.error("Please enter a valid URL.")
+
