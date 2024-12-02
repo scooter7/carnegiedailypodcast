@@ -37,13 +37,15 @@ Only return JSON without additional text, explanations, or formatting.
 """
 
 # Function to extract featured profile links
+from urllib.parse import urljoin
+
 def fetch_featured_profiles(parent_url):
     try:
         response = requests.get(parent_url)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         links = soup.select("a[href*='college/profile/']")  # Adjust the selector as needed
-        profile_links = [link.get("href") for link in links if "college/profile/" in link.get("href", "")]
+        profile_links = [urljoin(parent_url, link.get("href")) for link in links if "college/profile/" in link.get("href", "")]
         return list(set(profile_links))  # Remove duplicates
     except Exception as e:
         st.warning(f"Error fetching featured profiles: {e}")
