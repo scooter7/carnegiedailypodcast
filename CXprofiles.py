@@ -64,7 +64,7 @@ def scrape_content(url):
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize the following content into meaningful insights."},
@@ -79,7 +79,7 @@ def summarize_content(text):
 # Generate podcast script
 def generate_script(enriched_text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
