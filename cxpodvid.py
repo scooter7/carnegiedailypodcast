@@ -211,9 +211,11 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
-        return None
+        return None, []
 
     clips = []
+    temp_files = []  # Track temporary files
+
     try:
         for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
@@ -228,10 +230,12 @@ def create_video_with_audio(images, script, audio_segments):
             temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
             Image.fromarray(overlay_image).save(temp_file.name)
             temp_file.close()
+            temp_files.append(temp_file.name)
 
             # Create audio file
             audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
+            temp_files.append(audio_path)
 
             audio_clip = AudioFileClip(audio_path)
             image_clip = ImageClip(temp_file.name, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
@@ -242,14 +246,13 @@ def create_video_with_audio(images, script, audio_segments):
             video_file_path = "final_video.mp4"
             final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
             logging.info(f"Video successfully created: {video_file_path}")
-            return video_file_path
+            return video_file_path, temp_files
         else:
             st.error("No video clips were created.")
-            return None
+            return None, temp_files
     finally:
         # Cleanup temporary files
-        for idx in range(len(audio_segments)):
-            audio_path = f"audio_{idx}.mp3"
+        for audio_path in temp_files:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
