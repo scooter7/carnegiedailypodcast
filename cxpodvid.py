@@ -80,16 +80,27 @@ def download_image(url):
         return None
 
 # Filter valid image formats and URLs
-def filter_valid_images(image_urls, max_images=5):
+def filter_valid_images(image_urls, min_width=400, min_height=300):
     valid_images = []
-    for url in image_urls[:max_images]:
-        if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp", "gif"]):
-            logging.info(f"Skipping unsupported image format: {url}")
-            continue
-        image_path = download_image(url)
-        if image_path:
-            valid_images.append(image_path)
-    logging.info(f"Filtered valid images: {valid_images}")
+    for url in image_urls:
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content))
+
+            # Skip small or greyscale images
+            if img.width < min_width or img.height < min_height:
+                logging.warning(f"Skipping small image: {url} ({img.width}x{img.height})")
+                continue
+            if img.mode not in ["RGB", "RGBA"]:
+                logging.warning(f"Skipping non-RGB image: {url} (mode: {img.mode})")
+                continue
+
+            # Append valid image URL
+            valid_images.append(url)
+        except Exception as e:
+            logging.warning(f"Error processing image: {url}, Error: {e}")
+    logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
 # Scrape images and text from a URL
@@ -202,9 +213,8 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         )
         img = Image.alpha_composite(img, overlay)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
-        logging.info(f"Text overlay added: {text}")
 
-        # Convert to a NumPy array (compatible with moviepy)
+        # Convert to NumPy array (compatible with moviepy)
         img_np = np.array(img.convert("RGB"))
         return img_np
     except Exception as e:
@@ -217,12 +227,11 @@ def create_video_with_audio(images, script, audio_segments):
         return None
 
     clips = []
-
     try:
         for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
-            # Generate overlayed image as NumPy array
+            # Add text overlay to the image
             overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
             if overlay_image is None:
                 logging.warning(f"Skipping invalid image: {image_url}")
@@ -232,14 +241,10 @@ def create_video_with_audio(images, script, audio_segments):
             audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
 
-            # Create video clip
-            try:
-                audio_clip = AudioFileClip(audio_path)
-                image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
-                logging.info(f"Video clip created for image {idx + 1}")
-                clips.append(image_clip)
-            except Exception as e:
-                logging.error(f"Failed to create video clip for image {image_url}: {e}")
+            # Create video clip with the overlayed image
+            audio_clip = AudioFileClip(audio_path)
+            image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+            clips.append(image_clip)
 
         # Concatenate clips into a final video
         if clips:
@@ -252,7 +257,7 @@ def create_video_with_audio(images, script, audio_segments):
             st.error("No video clips were created.")
             return None
     finally:
-        # Clean up audio files
+        # Clean up temporary audio files
         for idx in range(len(audio_segments)):
             audio_path = f"audio_{idx}.mp3"
             if os.path.exists(audio_path):
@@ -268,16 +273,16 @@ if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
+        # Scrape images and filter valid ones
         images, text = scrape_images_and_text(url_input.strip())
-        if text:
-            st.write("Previewing Images with Text Overlays...")
-            for idx, image_url in enumerate(images):
-                overlay_image = add_text_overlay_on_fly(image_url, f"Sample text for image {idx + 1}", local_font_path)
-                if overlay_image is not None:
-                    st.image(overlay_image, caption=f"Image {idx + 1} with Text Overlay")
-                else:
-                    st.warning(f"Failed to process image {idx + 1}: {image_url}")
+        filtered_images = filter_valid_images(images)
+        
+        # Preview valid images
+        st.write("Previewing Filtered Images...")
+        for idx, img_url in enumerate(filtered_images):
+            st.image(img_url, caption=f"Filtered Image {idx + 1}")
 
+        if text:
             summary = summarize_content(text)
             if summary:
                 max_words = max_words_for_duration(duration)
@@ -286,15 +291,8 @@ if st.button("Generate Content"):
                     audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
                     audio_segments = [audio for audio in audio_segments if audio]
                     if audio_segments:
-                        combined_audio = sum(audio_segments, AudioSegment.empty())
-                        podcast_file = "podcast.mp3"
-                        combined_audio.export(podcast_file, format="mp3")
-                        st.success("Podcast created successfully!")
-                        st.audio(podcast_file)
-                        st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-
                         # Generate video
-                        video_file = create_video_with_audio(images, conversation_script, audio_segments)
+                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments)
                         if video_file:
                             st.success("Video created successfully!")
                             st.video(video_file)
