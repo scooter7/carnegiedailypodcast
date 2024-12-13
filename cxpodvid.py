@@ -185,7 +185,6 @@ def add_text_overlay(image_path, text, output_path):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Create video using MoviePy
 # Create video with synchronized audio
 def create_video_with_audio(images, script, audio_segments, duration_seconds):
     if not images or not script or not audio_segments:
@@ -223,15 +222,17 @@ def create_video_with_audio(images, script, audio_segments, duration_seconds):
     return video_file
 
 # Streamlit app interface
-st.title("CX Podcast & Video Generator")
-url = st.text_input("Enter the URL of the page:")
-duration = st.radio("Select Video Duration (seconds)", [15, 30, 45, 60], index=0)
+st.title("CX Podcast and Video Generator")
+url_input = st.text_input("Enter the URL of the page to scrape text and images:")
+
+duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
 
 if st.button("Generate Content"):
-    if not parent_url.strip():
+    if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        images, text = scrape_images_and_text(parent_url.strip())
+        # Scrape text and images from the provided URL
+        images, text = scrape_images_and_text(url_input.strip())
         if text:
             summary = summarize_content(text)
             if summary:
@@ -265,4 +266,3 @@ if st.button("Generate Content"):
                 st.error("Failed to summarize content.")
         else:
             st.error("Failed to scrape content.")
-
