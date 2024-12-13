@@ -1,5 +1,4 @@
 # Standard Python and library imports
-import sys
 import os
 import requests
 from bs4 import BeautifulSoup
@@ -71,7 +70,7 @@ def filter_valid_images(image_urls, max_images=5):
             valid_images.append(url)
     return valid_images
 
-# Download and convert an image to a rasterized format
+# Download and save an image locally, handling RGBA to RGB conversion
 def download_image(url):
     try:
         response = requests.get(url, timeout=10)  # Set timeout for image download
@@ -151,15 +150,31 @@ def generate_script(enriched_text, max_words):
         st.error(f"Error generating script: {e}")
         return []
 
-# Add text to image using PIL
+# Synthesize speech using ElevenLabs
+def synthesize_cloned_voice(text, speaker):
+    try:
+        audio_generator = elevenlabs_client.generate(
+            text=text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_multilingual_v2"
+        )
+        audio_content = b"".join(audio_generator)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
+            temp_audio_file.write(audio_content)
+            temp_audio_path = temp_audio_file.name
+        return AudioSegment.from_file(temp_audio_path, format="mp3")
+    except Exception as e:
+        st.error(f"Error synthesizing speech for {speaker}: {e}")
+        return None
+
+# Add text overlay to an image
 def add_text_overlay(image_path, text, output_path, font_path):
-    """Add captions to an image using Pillow with text wrapping and debugging."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        max_text_width = img.width - 40  # Padding of 20px on each side
+        max_text_width = img.width - 40
         wrapped_text = textwrap.fill(text, width=40)
 
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
@@ -222,9 +237,27 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
+                    audio_segments = []
+                    for part in conversation_script:
+                        audio = synthesize_cloned_voice(part["text"], part["speaker"])
+                        if audio:
+                            audio_segments.append(audio)
+                    if audio_segments:
+                        combined_audio = sum(audio_segments, AudioSegment.empty())
+                        podcast_file = "podcast.mp3"
+                        combined_audio.export(podcast_file, format="mp3")
+                        st.success("Podcast created successfully!")
+                        st.audio(podcast_file)
+                        st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+
                     video_file = create_video(images, conversation_script, duration)
                     if video_file:
                         st.success("Video created successfully!")
                         st.video(video_file)
-                    else:
-                        st.error("Failed to create video.")
+                        st.download_button("Download Video", open(video_file, "rb"), file_name="video_short.mp4")
+                else:
+                    st.error("Failed to generate the podcast script.")
+            else:
+                st.error("Failed to summarize content.")
+        else:
+            st.error("Failed to scrape content.")
