@@ -201,15 +201,13 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.alpha_composite(img, overlay)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Convert to in-memory JPEG
-        buffer = BytesIO()
-        img.convert("RGB").save(buffer, format="JPEG")
-        buffer.seek(0)
-        return buffer
+        # Convert to NumPy array
+        img_np = np.array(img.convert("RGB"))
+        return img_np
     except Exception as e:
         logging.error(f"Error adding text overlay to image from {image_url}: {e}")
         return None
-
+        
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
@@ -221,16 +219,16 @@ def create_video_with_audio(images, script, audio_segments):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
             # Create text overlay directly from URL
-            overlay_buffer = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
-            if not overlay_buffer:
+            overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
+            if overlay_image is None:
                 continue
 
-            # Load image as ImageClip
+            # Create audio file
             audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
 
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(overlay_buffer, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+            image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
             clips.append(image_clip)
 
         if clips:
