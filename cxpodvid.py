@@ -179,31 +179,31 @@ def add_text_to_image(image_path, text, font_size=24):
 # Create video using images and captions
 def create_video(images, script, duration_seconds):
     clips = []
-    segment_duration = duration_seconds / len(script)
+    segment_duration = duration_seconds / len(script) if script else 0
 
     for i, (image, part) in enumerate(zip(images, script)):
         text_image_path = add_text_to_image(image, part["text"])
         if text_image_path:
             img_clip = ImageClip(text_image_path).set_duration(segment_duration)
             clips.append(img_clip)
+        else:
+            st.warning(f"Failed to create text image for script part: {part['text']}")
+
+    if not clips:
+        st.error("No video clips could be created. Ensure valid images and script are provided.")
+        return None
 
     final_video = concatenate_videoclips(clips)
     video_file = "video_short.mp4"
     final_video.write_videofile(video_file, codec="libx264", fps=24)
     return video_file
 
-# Streamlit app interface
-st.title("CX College Profile Video & Podcast Creator")
-st.write("Enter a CX Profile URL to generate a podcast and video short.")
-
-parent_url = st.text_input("Enter the URL of the page:")
-duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
-
+# Main Streamlit App Logic
 if st.button("Generate Content"):
     if parent_url.strip():
         st.write("Scraping content from the URL...")
         images, scraped_text = scrape_images_and_text(parent_url.strip())
-        st.write("Scraping complete.")
+        st.write(f"Scraping complete. Found {len(images)} images.")
 
         if scraped_text:
             st.write("Summarizing content...")
@@ -214,13 +214,13 @@ if st.button("Generate Content"):
                 st.write("Generating podcast script...")
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
-                st.write("Script generation complete.")
+                st.write(f"Script generation complete. Generated {len(conversation_script)} script parts.")
 
                 if conversation_script:
                     st.write("Generating podcast audio...")
                     audio_segments = []
                     for part in conversation_script:
-                        st.write(f"Processing audio for {part['speaker']}.")
+                        st.write(f"Processing audio for {part['speaker']}...")
                         audio = synthesize_cloned_voice(part["text"], part["speaker"])
                         if audio:
                             audio_segments.append(audio)
@@ -234,14 +234,17 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                    if images:
+                    if images and conversation_script:
                         st.write("Creating video short...")
                         video_file = create_video(images, conversation_script, duration)
-                        st.success("Video short created successfully!")
-                        st.video(video_file)
-                        st.download_button("Download Video", open(video_file, "rb"), file_name="video_short.mp4")
+                        if video_file:
+                            st.success("Video short created successfully!")
+                            st.video(video_file)
+                            st.download_button("Download Video", open(video_file, "rb"), file_name="video_short.mp4")
+                        else:
+                            st.error("Failed to create video short. Ensure valid images and script are available.")
                     else:
-                        st.error("No valid images found to create video short.")
+                        st.error("No valid images or script available to create video short.")
                 else:
                     st.error("Failed to generate the podcast script.")
             else:
