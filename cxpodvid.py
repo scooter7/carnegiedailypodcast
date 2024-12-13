@@ -71,6 +71,7 @@ def download_image(url):
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(temp_img.name, format="JPEG")
+        logging.info(f"Image downloaded and saved: {temp_img.name}")
         return temp_img.name
     except Exception as e:
         logging.warning(f"Failed to download or process image: {url}. Error: {e}")
@@ -101,6 +102,9 @@ def scrape_images_and_text(url):
         # Extract images
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = filter_valid_images(image_urls)
+
+        # Log downloaded image paths
+        logging.info(f"Downloaded valid images: {valid_images}")
 
         # Extract text
         text = soup.get_text(separator=" ", strip=True)
@@ -175,7 +179,6 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay(image_path, text, output_path, font_path):
-    """Adds text overlay to an image and saves it."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
@@ -217,7 +220,6 @@ def add_text_overlay(image_path, text, output_path, font_path):
         return None
 
 def create_video_with_audio(images, script, audio_segments):
-    """Creates a video with synchronized images and audio."""
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
         return None
@@ -235,6 +237,7 @@ def create_video_with_audio(images, script, audio_segments):
             if not text_overlay_path:
                 logging.error(f"Failed to add text overlay to image: {image}")
                 continue
+            logging.info(f"Overlay image saved: {text_overlay_path}")
             temp_files.append(text_overlay_path)
 
             # Create video clip
