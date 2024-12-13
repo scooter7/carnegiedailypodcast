@@ -71,11 +71,13 @@ def download_image(url):
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(temp_img.name, format="JPEG")
-        logging.info(f"Image downloaded and saved: {temp_img.name}")
+        logging.info(f"Image downloaded and saved: {temp_img.name}, size: {img.size}")
         return temp_img.name
     except Exception as e:
         logging.warning(f"Failed to download or process image: {url}. Error: {e}")
         return None
+        
+st.image(image_path, caption=f"Input Image from {image_path}")
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, max_images=5):
@@ -182,46 +184,65 @@ def add_text_overlay(image_path, text, output_path, font_path):
     try:
         # Load image
         img = Image.open(image_path).convert("RGBA")
+        logging.info(f"Overlaying text on image: {image_path}, size: {img.size}")
+
         draw = ImageDraw.Draw(img)
 
-        # Load font
+        # Validate font path
         if not os.path.exists(font_path):
             raise FileNotFoundError(f"Font file not found: {font_path}")
+        
+        # Load font
         font = ImageFont.truetype(font_path, size=30)
+        logging.info(f"Font loaded successfully: {font_path}")
 
-        # Wrap text to fit within the image width
-        max_chars = 40  # Approx. characters per line
+        # Wrap text
+        max_chars = 40
         wrapped_text = textwrap.fill(text, width=max_chars)
+        logging.info(f"Wrapped text: {wrapped_text}")
 
-        # Measure text size
+        # Measure text dimensions
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
+        logging.info(f"Text dimensions: width={text_width}, height={text_height}")
 
-        # Position text near the bottom of the image
-        x_start = max((img.width - text_width) // 2, 10)  # Ensure padding
-        y_start = min(img.height - text_height - 30, img.height - 50)  # Ensure bottom padding
+        # Position text at the bottom
+        x_start = max((img.width - text_width) // 2, 10)
+        y_start = min(img.height - text_height - 30, img.height - 50)
+        logging.info(f"Text position: x={x_start}, y={y_start}")
 
-        # Create background for text
+        # Draw background for text
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 180)  # Semi-transparent black
+            fill=(0, 0, 0, 180)
         )
+        logging.info("Background rectangle drawn successfully.")
+
+        # Composite background and image
         img = Image.alpha_composite(img, background)
 
-        # Draw the text
+        # Draw text
         draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
+        logging.info("Text drawn successfully.")
 
         # Save the resulting image
         img.convert("RGB").save(output_path, "JPEG")
-        logging.info(f"Text overlay added to image: {output_path}")
+        logging.info(f"Image with overlay saved: {output_path}")
+
+        # Display the final overlayed image in Streamlit
+        st.image(output_path, caption="Overlayed Image")
         return output_path
     except Exception as e:
         logging.error(f"Error in add_text_overlay: {e}")
+        st.error(f"Failed to overlay text: {e}")
         return None
+
+st.image(image_path, caption="Downloaded Image")
+st.image(output_path, caption="Overlayed Image")
 
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
