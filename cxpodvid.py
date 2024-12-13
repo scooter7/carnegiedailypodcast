@@ -206,23 +206,37 @@ def create_video_with_audio(images, script, audio_segments, duration_seconds):
         return None
 
     clips = []
-    for image, part, audio in zip(images, script, audio_segments):
-        segment_duration = len(audio) / 1000  # Convert audio length to seconds
-        output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        if add_text_overlay(image, part["text"], output_path):
-            video_clip = ImageClip(output_path).set_duration(segment_duration)
-            audio_clip = audio.export(tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name, format="mp3")
-            video_clip = video_clip.set_audio(AudioFileClip(audio_clip))
-            clips.append(video_clip)
+    temp_files = []  # Track temporary files for cleanup
 
-    if not clips:
-        st.error("No video clips could be created.")
-        return None
+    try:
+        for image, part, audio in zip(images, script, audio_segments):
+            segment_duration = len(audio) / 1000  # Convert audio length to seconds
+            output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
+            temp_files.append(output_path)
+            if add_text_overlay(image, part["text"], output_path):
+                video_clip = ImageClip(output_path).set_duration(segment_duration)
 
-    final_video = concatenate_videoclips(clips, method="compose")
-    video_file = "video_with_audio.mp4"
-    final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
-    return video_file
+                # Export audio to a temporary file and pass its name to AudioFileClip
+                temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+                temp_files.append(temp_audio_file)
+                audio.export(temp_audio_file, format="mp3")
+                audio_clip = AudioFileClip(temp_audio_file)
+                video_clip = video_clip.set_audio(audio_clip)
+                clips.append(video_clip)
+
+        if not clips:
+            st.error("No video clips could be created.")
+            return None
+
+        final_video = concatenate_videoclips(clips, method="compose")
+        video_file = "video_with_audio.mp4"
+        final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
+        return video_file
+    finally:
+        # Cleanup temporary files
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
