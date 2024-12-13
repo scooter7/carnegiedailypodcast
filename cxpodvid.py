@@ -9,7 +9,7 @@ from pydub import AudioSegment
 from elevenlabs.client import ElevenLabs
 import tempfile
 import json
-from moviepy.editor import ImageClip, concatenate_videoclips, CompositeVideoClip, AudioFileClip
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from urllib.parse import urljoin
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
