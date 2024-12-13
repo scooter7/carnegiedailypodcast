@@ -168,26 +168,6 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-def scrape_images_and_text(url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        images = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
-        images = filter_valid_images(images)
-        downloaded_images = []
-        for img_url in images:
-            downloaded_path = download_image(img_url)
-            if downloaded_path:
-                downloaded_images.append(downloaded_path)
-                st.write(f"Image downloaded: {downloaded_path}")
-        text = soup.get_text(separator=" ", strip=True)
-        return downloaded_images, text[:5000]
-    except Exception as e:
-        st.error(f"Error scraping content from {url}: {e}")
-        return [], ""
-
 def add_text_overlay(image_path, text, output_path, font_path):
     try:
         img = Image.open(image_path).convert("RGBA")
@@ -218,6 +198,7 @@ def add_text_overlay(image_path, text, output_path, font_path):
         st.error(f"Failed to add text overlay: {e}")
         return None
 
+# Create video using images and captions
 def create_video(images, script, duration_seconds):
     if not images or not script:
         st.error("No valid images or script provided. Cannot create video.")
@@ -247,35 +228,16 @@ def create_video(images, script, duration_seconds):
         st.error(f"Failed to concatenate video clips. Error: {e}")
         return None
 
-if st.button("Generate Content"):
-    if parent_url.strip():
-        st.write("Scraping content from the URL...")
-        images, scraped_text = scrape_images_and_text(parent_url.strip())
-        if not images:
-            st.error("No images were downloaded. Ensure the URL contains valid image sources.")
-        else:
-            st.write(f"Scraped {len(images)} images.")
-
-        if scraped_text:
-            summary = summarize_content(scraped_text)
-            if summary:
-                max_words = max_words_for_duration(duration)
-                conversation_script = generate_script(summary, max_words)
-                if conversation_script:
-                    video_file = create_video(images, conversation_script, duration)
-                    if video_file:
-                        st.video(video_file)
-                        st.download_button("Download Video", open(video_file, "rb"), file_name="video_short.mp4")
-
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
 parent_url = st.text_input("Enter the URL of the page:")
-duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
+duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0, key="duration_selector")
 
-if st.button("Generate Content"):
+if st.button("Generate Content", key="generate_button"):
     if not parent_url.strip():
         st.error("Please enter a valid URL.")
     else:
+        st.write("Scraping content from the URL...")
         images, text = scrape_images_and_text(parent_url.strip())
         if text:
             summary = summarize_content(text)
