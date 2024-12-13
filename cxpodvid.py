@@ -105,7 +105,7 @@ def scrape_images_and_text(url):
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize the following content into key points."},
@@ -120,7 +120,7 @@ def summarize_content(text):
 # Generate script using OpenAI
 def generate_script(summary, max_words):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words."},
