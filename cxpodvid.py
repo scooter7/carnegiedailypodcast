@@ -179,6 +179,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
+        logging.info(f"Image successfully fetched from URL: {image_url}")
 
         # Prepare the text overlay
         draw = ImageDraw.Draw(img)
@@ -201,6 +202,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         )
         img = Image.alpha_composite(img, overlay)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
+        logging.info(f"Text overlay added: {text}")
 
         # Convert to a NumPy array (compatible with moviepy)
         img_np = np.array(img.convert("RGB"))
@@ -231,9 +233,13 @@ def create_video_with_audio(images, script, audio_segments):
             audio.export(audio_path, format="mp3")
 
             # Create video clip
-            audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
-            clips.append(image_clip)
+            try:
+                audio_clip = AudioFileClip(audio_path)
+                image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+                logging.info(f"Video clip created for image {idx + 1}")
+                clips.append(image_clip)
+            except Exception as e:
+                logging.error(f"Failed to create video clip for image {image_url}: {e}")
 
         # Concatenate clips into a final video
         if clips:
@@ -264,6 +270,14 @@ if st.button("Generate Content"):
     else:
         images, text = scrape_images_and_text(url_input.strip())
         if text:
+            st.write("Previewing Images with Text Overlays...")
+            for idx, image_url in enumerate(images):
+                overlay_image = add_text_overlay_on_fly(image_url, f"Sample text for image {idx + 1}", local_font_path)
+                if overlay_image is not None:
+                    st.image(overlay_image, caption=f"Image {idx + 1} with Text Overlay")
+                else:
+                    st.warning(f"Failed to process image {idx + 1}: {image_url}")
+
             summary = summarize_content(text)
             if summary:
                 max_words = max_words_for_duration(duration)
