@@ -71,7 +71,7 @@ def summarize_content(text):
 def generate_script(enriched_text, duration_seconds, retries=3):
     for attempt in range(retries):
         try:
-            response = openai.chat.ompletions.create(
+            response = openai.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": f"{system_prompt} The script should fit within {duration_seconds} seconds."},
