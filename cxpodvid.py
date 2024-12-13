@@ -218,17 +218,23 @@ def create_video_with_audio(images, script, audio_segments):
         for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
-            # Create text overlay directly from URL
+            # Add text overlay
             overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
             if overlay_image is None:
+                logging.warning(f"Skipping invalid image: {image_url}")
                 continue
+
+            # Save NumPy array as a temporary image file
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+            Image.fromarray(overlay_image).save(temp_file.name)
+            temp_file.close()
 
             # Create audio file
             audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
 
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+            image_clip = ImageClip(temp_file.name, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
             clips.append(image_clip)
 
         if clips:
@@ -241,6 +247,7 @@ def create_video_with_audio(images, script, audio_segments):
             st.error("No video clips were created.")
             return None
     finally:
+        # Cleanup temporary files
         for idx in range(len(audio_segments)):
             audio_path = f"audio_{idx}.mp3"
             if os.path.exists(audio_path):
