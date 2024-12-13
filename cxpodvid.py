@@ -178,25 +178,36 @@ def add_text_to_image(image_path, text, font_size=24):
 
 # Create video using images and captions
 def create_video(images, script, duration_seconds):
+    if not images or not script:
+        st.error("No valid images or script provided. Cannot create video.")
+        return None
+
     clips = []
     segment_duration = duration_seconds / len(script) if script else 0
 
     for i, (image, part) in enumerate(zip(images, script)):
         text_image_path = add_text_to_image(image, part["text"])
         if text_image_path:
-            img_clip = ImageClip(text_image_path).set_duration(segment_duration)
-            clips.append(img_clip)
+            try:
+                img_clip = ImageClip(text_image_path).set_duration(segment_duration)
+                clips.append(img_clip)
+            except Exception as e:
+                st.warning(f"Failed to create clip for script part: {part['text']}. Error: {e}")
         else:
-            st.warning(f"Failed to create text image for script part: {part['text']}")
+            st.warning(f"Failed to add text to image for script part: {part['text']}")
 
     if not clips:
         st.error("No video clips could be created. Ensure valid images and script are provided.")
         return None
 
-    final_video = concatenate_videoclips(clips)
-    video_file = "video_short.mp4"
-    final_video.write_videofile(video_file, codec="libx264", fps=24)
-    return video_file
+    try:
+        final_video = concatenate_videoclips(clips)
+        video_file = "video_short.mp4"
+        final_video.write_videofile(video_file, codec="libx264", fps=24)
+        return video_file
+    except Exception as e:
+        st.error(f"Failed to concatenate video clips. Error: {e}")
+        return None
 
 # Main Streamlit App Interface
 st.title("CX College Profile Video & Podcast Creator")
