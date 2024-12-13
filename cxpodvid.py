@@ -41,12 +41,12 @@ Only return JSON without additional text, explanations, or formatting.
 # Estimate maximum words for duration
 def max_words_for_duration(duration_seconds):
     wpm = 150  # Average words per minute
-    return (duration_seconds / 60) * wpm
+    return int((duration_seconds / 60) * wpm)
 
 # Filter valid image formats
-def filter_valid_images(image_urls):
+def filter_valid_images(image_urls, max_images=5):
     valid_images = []
-    for url in image_urls:
+    for url in image_urls[:max_images]:  # Restrict to a maximum number of images
         if url.lower().endswith(("png", "jpg", "jpeg")):
             valid_images.append(url)
     return valid_images
@@ -54,7 +54,7 @@ def filter_valid_images(image_urls):
 # Download and convert an image to a rasterized format
 def download_image(url):
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)  # Set timeout for image download
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
@@ -67,18 +67,21 @@ def download_image(url):
 # Scrape images and text from a URL
 def scrape_images_and_text(url):
     try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=10)  # Set timeout for scraping
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-        
+
         # Extract images
         images = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         images = filter_valid_images(images)
         images = [download_image(img_url) for img_url in images if download_image(img_url)]
-        
+
         # Extract text
         text = soup.get_text(separator=" ", strip=True)
         return images, text[:5000]
+    except requests.exceptions.Timeout:
+        st.warning(f"Request to {url} timed out.")
+        return [], ""
     except Exception as e:
         st.warning(f"Error scraping content from {url}: {e}")
         return [], ""
@@ -110,7 +113,6 @@ def generate_script(enriched_text, max_words):
         )
         raw_content = response.choices[0].message.content.strip()
         try:
-            # Validate JSON format
             conversation_script = json.loads(raw_content)
             truncated_script = []
             total_words = 0
@@ -134,14 +136,14 @@ def generate_script(enriched_text, max_words):
 def create_video(images, script, duration_seconds):
     clips = []
     segment_duration = duration_seconds / len(script)
-    
+
     for i, (image, part) in enumerate(zip(images, script)):
         img_clip = ImageClip(image).set_duration(segment_duration)
         text_clip = TextClip(part["text"], fontsize=24, color='white', bg_color='black', size=img_clip.size)
         text_clip = text_clip.set_duration(segment_duration).set_position('bottom')
         composite_clip = CompositeVideoClip([img_clip, text_clip])
         clips.append(composite_clip)
-    
+
     final_video = concatenate_videoclips(clips)
     video_file = "video_short.mp4"
     final_video.write_videofile(video_file, codec="libx264", fps=24)
@@ -157,33 +159,38 @@ duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
 if st.button("Generate Content"):
     if parent_url.strip():
         st.write("Scraping content from the URL...")
-        
         images, scraped_text = scrape_images_and_text(parent_url.strip())
+        st.write("Scraping complete.")
+
         if scraped_text:
             st.write("Summarizing content...")
             summary = summarize_content(scraped_text)
-            
+            st.write("Summarization complete.")
+
             if summary:
                 st.write("Generating podcast script...")
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
-                
+                st.write("Script generation complete.")
+
                 if conversation_script:
                     st.write("Generating podcast audio...")
                     audio_segments = []
                     for part in conversation_script:
+                        st.write(f"Processing audio for {part['speaker']}.")
                         audio = synthesize_cloned_voice(part["text"], part["speaker"])
                         if audio:
                             audio_segments.append(audio)
-                    
+
                     if audio_segments:
+                        st.write("Combining audio segments...")
                         combined_audio = sum(audio_segments, AudioSegment.empty())
                         podcast_file = "podcast.mp3"
                         combined_audio.export(podcast_file, format="mp3")
                         st.success("Podcast generated successfully!")
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-                    
+
                     if images:
                         st.write("Creating video short...")
                         video_file = create_video(images, conversation_script, duration)
