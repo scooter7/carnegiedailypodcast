@@ -186,30 +186,41 @@ def add_text_overlay(image_path, text, output_path):
         return None
 
 # Create video using MoviePy
-def create_video(images, script, audio_files, duration_seconds):
-    if not images or not script or not audio_files:
-        logging.error("Insufficient data to create video.")
+# Create video with synchronized audio
+def create_video_with_audio(images, script, audio_segments, duration_seconds):
+    if not images or not script or not audio_segments:
+        st.error("No valid images, script, or audio segments provided. Cannot create video.")
+        return None
+
+    # Ensure the number of images, script parts, and audio segments match
+    if len(images) != len(script) or len(script) != len(audio_segments):
+        st.error("Mismatch between the number of images, script parts, and audio segments.")
         return None
 
     clips = []
-    segment_duration = duration_seconds / len(script)
+    total_duration = 0
 
-    for image, part, audio_file in zip(images, script, audio_files):
-        temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        if add_text_overlay(image, part["text"], temp_image_path):
-            img_clip = ImageClip(temp_image_path).set_duration(segment_duration)
-            audio_clip = AudioFileClip(audio_file).subclip(0, segment_duration)
-            img_clip = img_clip.set_audio(audio_clip)
-            clips.append(img_clip)
+    for image, part, audio in zip(images, script, audio_segments):
+        segment_duration = len(audio) / 1000  # Convert audio length to seconds
+        total_duration += segment_duration
 
-    if clips:
-        video_file = "final_video.mp4"
-        final_video = concatenate_videoclips(clips)
-        final_video.write_videofile(video_file, codec="libx264", fps=24)
-        return video_file
-    else:
-        logging.error("No video clips created.")
+        output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
+        if add_text_overlay(image, part["text"], output_path, local_font_path):
+            # Create a video clip with text overlay and corresponding audio
+            video_clip = ImageClip(output_path).set_duration(segment_duration)
+            audio_clip = AudioFileClip(audio.export(tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name, format="mp3"))
+            video_clip = video_clip.set_audio(audio_clip)
+            clips.append(video_clip)
+
+    # Concatenate video clips
+    if not clips:
+        st.error("No video clips could be created.")
         return None
+
+    final_video = concatenate_videoclips(clips, method="compose")
+    video_file = "video_with_audio.mp4"
+    final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
+    return video_file
 
 # Streamlit app interface
 st.title("CX Podcast & Video Generator")
@@ -217,24 +228,41 @@ url = st.text_input("Enter the URL of the page:")
 duration = st.radio("Select Video Duration (seconds)", [15, 30, 45, 60], index=0)
 
 if st.button("Generate Content"):
-    if url.strip():
-        images, text = scrape_images_and_text(url)
-        if images and text:
+    if not parent_url.strip():
+        st.error("Please enter a valid URL.")
+    else:
+        images, text = scrape_images_and_text(parent_url.strip())
+        if text:
             summary = summarize_content(text)
             if summary:
                 max_words = max_words_for_duration(duration)
-                script = generate_script(summary, max_words)
-                if script:
-                    audio_files = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
-                    video_file = create_video(images, script, audio_files, duration)
-                    if video_file:
-                        st.video(video_file)
-                        st.download_button("Download Video", open(video_file, "rb"), file_name="final_video.mp4")
+                conversation_script = generate_script(summary, max_words)
+                if conversation_script:
+                    audio_segments = []
+                    for part in conversation_script:
+                        audio = synthesize_cloned_voice(part["text"], part["speaker"])
+                        if audio:
+                            audio_segments.append(audio)
+                    if audio_segments:
+                        combined_audio = sum(audio_segments, AudioSegment.empty())
+                        podcast_file = "podcast.mp3"
+                        combined_audio.export(podcast_file, format="mp3")
+                        st.success("Podcast created successfully!")
+                        st.audio(podcast_file)
+                        st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+
+                        # Generate video with audio
+                        video_file = create_video_with_audio(images, conversation_script, audio_segments, duration)
+                        if video_file:
+                            st.success("Video created successfully!")
+                            st.video(video_file)
+                            st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
+                    else:
+                        st.error("Failed to synthesize audio for the script.")
                 else:
-                    logging.error("Failed to generate script.")
+                    st.error("Failed to generate the podcast script.")
             else:
-                logging.error("Failed to summarize text.")
+                st.error("Failed to summarize content.")
         else:
-            logging.error("Failed to scrape content.")
-    else:
-        st.error("Please enter a valid URL.")
+            st.error("Failed to scrape content.")
+
