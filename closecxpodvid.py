@@ -71,6 +71,7 @@ def download_image(url):
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(temp_img.name, format="JPEG")
+        logging.info(f"Image downloaded and saved: {temp_img.name}, size: {img.size}")
         return temp_img.name
     except Exception as e:
         logging.warning(f"Failed to download or process image: {url}. Error: {e}")
@@ -80,32 +81,33 @@ def download_image(url):
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
     for url in image_urls[:max_images]:
-        # Skip unsupported formats
         if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp", "gif"]):
             logging.info(f"Skipping unsupported image format: {url}")
             continue
         image_path = download_image(url)
         if image_path:
             valid_images.append(image_path)
+    logging.info(f"Filtered valid images: {valid_images}")
     return valid_images
 
 # Scrape images and text from a URL
 def scrape_images_and_text(url):
     try:
         response = requests.get(url, timeout=10)
-        if response.status_code != 200:
-            raise ValueError(f"Received {response.status_code} status code for URL: {url}")
-
+        response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract images
+        # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = filter_valid_images(image_urls)
 
-        # Extract text
+        # Log and preview images
+        logging.info(f"Downloaded valid images: {valid_images}")
+        for img in valid_images:
+            st.image(img, caption=f"Downloaded Image: {img}")
+
+        # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        if not text:
-            logging.warning("No textual content found on the page.")
         return valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
@@ -175,63 +177,62 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay(image_path, text, output_path, font_path):
-    """Adds text overlay to an image and saves it."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
 
-        # Load the font
+        # Load font
         font = ImageFont.truetype(font_path, size=30)
 
-        # Wrap the text
+        # Wrap text
         wrapped_text = textwrap.fill(text, width=40)
-
-        # Calculate text dimensions
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position the text
-        x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 30
+        # Position text
+        x_start = max((img.width - text_width) // 2, 10)
+        y_start = min(img.height - text_height - 30, img.height - 50)
 
-        # Draw background for text
+        # Draw background and overlay
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 128)
+            fill=(0, 0, 0, 180)
         )
         img = Image.alpha_composite(img, background)
-
-        # Draw the text on top
-        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save the image
+        # Save and log
         img.convert("RGB").save(output_path, "JPEG")
+        logging.info(f"Overlay image saved: {output_path}")
+
+        # Preview overlayed image
+        st.image(output_path, caption="Overlayed Image")
         return output_path
     except Exception as e:
-        logging.error(f"Failed to add text overlay: {e}")
+        logging.error(f"Error in add_text_overlay: {e}")
         return None
 
 def create_video_with_audio(images, script, audio_segments):
-    """Creates a video with synchronized images and audio."""
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
-        return None
+        return None, []
 
     clips = []
-    temp_files = []
+    temp_files = []  # Track temporary files
 
     try:
-        for image, part, audio in zip(images, script, audio_segments):
+        for idx, (image, part, audio) in enumerate(zip(images, script, audio_segments)):
+            logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
+
             # Add text overlay to the image
             temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
             text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
             if not text_overlay_path:
-                logging.error(f"Failed to add text overlay to image: {image}")
                 continue
+            logging.info(f"Overlay image saved: {text_overlay_path}")
             temp_files.append(text_overlay_path)
 
             # Create video clip
@@ -243,6 +244,7 @@ def create_video_with_audio(images, script, audio_segments):
             image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration)
             image_clip = image_clip.set_audio(audio_clip).set_fps(24)
 
+            logging.info(f"Created video clip for image {idx + 1}")
             clips.append(image_clip)
 
         # Concatenate video clips
@@ -250,15 +252,17 @@ def create_video_with_audio(images, script, audio_segments):
             final_video = concatenate_videoclips(clips, method="compose")
             video_file_path = "final_video.mp4"
             final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
-            return video_file_path
+            logging.info(f"Video successfully created: {video_file_path}")
+            return video_file_path, temp_files
         else:
             st.error("No video clips were created.")
-            return None
+            return None, temp_files
     finally:
-        # Cleanup temporary files
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        # Cleanup temporary files in case of failure
+        if not clips:  # Clean up only if no successful clips
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
@@ -287,12 +291,20 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        # Fix function call: Removed `duration`
-                        video_file = create_video_with_audio(images, conversation_script, audio_segments)
+                        # Generate video and retrieve temp files
+                        video_file, temp_files = create_video_with_audio(images, conversation_script, audio_segments)
                         if video_file:
                             st.success("Video created successfully!")
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
+
+                            # Preview overlayed images after video is created
+                            st.write("Preview images with text overlay:")
+                            for overlay_path in temp_files:
+                                if overlay_path.endswith(".jpg"):
+                                    st.image(overlay_path, caption=f"Overlay: {overlay_path}")
+                        else:
+                            st.error("Failed to create the video.")
 
                     else:
                         st.error("Failed to synthesize audio for the script.")
