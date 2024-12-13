@@ -54,34 +54,57 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Scrape images and text from a URL
-def scrape_images_and_text(url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, "html.parser")
-
-        images = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
-        images = [download_image(img_url) for img_url in images if download_image(img_url)]
-        text = soup.get_text(separator=" ", strip=True)
-        return images, text[:5000]
-    except Exception as e:
-        st.error(f"Error scraping content from {url}: {e}")
-        return [], ""
-
 # Download and process image
 def download_image(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        if img.mode == "RGBA":
+
+        # Convert unsupported image modes to RGB
+        if img.mode not in ["RGB", "RGBA"]:
             img = img.convert("RGB")
+
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(temp_img.name, format="JPEG")
         return temp_img.name
     except Exception as e:
-        st.warning(f"Failed to download image: {url}. Error: {e}")
+        st.warning(f"Failed to download or process image: {url}. Error: {e}")
         return None
+
+# Filter valid image formats and URLs
+def filter_valid_images(image_urls, max_images=5):
+    valid_images = []
+    for url in image_urls[:max_images]:
+        # Skip unsupported formats (e.g., SVG)
+        if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp"]):
+            st.warning(f"Skipping unsupported image format: {url}")
+            continue
+        try:
+            image_path = download_image(url)
+            if image_path:
+                valid_images.append(image_path)
+        except Exception as e:
+            st.warning(f"Error processing image: {url}. Error: {e}")
+    return valid_images
+
+# Scrape images and text from a URL
+def scrape_images_and_text(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extract images
+        image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
+        valid_images = filter_valid_images(image_urls)
+
+        # Extract text
+        text = soup.get_text(separator=" ", strip=True)
+        return valid_images, text[:5000]
+    except Exception as e:
+        st.error(f"Error scraping content from {url}: {e}")
+        return [], ""
 
 # Summarize content using OpenAI
 def summarize_content(text):
