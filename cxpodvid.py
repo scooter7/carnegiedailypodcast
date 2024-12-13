@@ -31,7 +31,7 @@ elevenlabs_client = ElevenLabs(
 # Configure speaker voices
 speaker_voice_map = {
     "Lisa": "Rachel",
-    "Ali": "NYy9s57OPECPcDJavL3T"
+    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with your voice ID
 }
 
 # System prompt for script generation
@@ -53,7 +53,7 @@ def download_font(font_url, local_path):
             f.write(response.content)
 download_font(font_url, local_font_path)
 
-# Word limit based on duration
+# Calculate word limit based on duration
 def max_words_for_duration(duration_seconds):
     wpm = 150  # Words per minute
     return int((duration_seconds / 60) * wpm)
@@ -142,28 +142,11 @@ def generate_script(enriched_text, max_words):
         # Remove surrounding Markdown backticks and potential "json" identifier
         if raw_content.startswith("```") and raw_content.endswith("```"):
             raw_content = raw_content.strip("```").strip()
-
-        # Remove any leading "json" keyword
         if raw_content.lower().startswith("json"):
             raw_content = raw_content[4:].strip()
 
         logging.info(f"Processed content after cleanup: {raw_content}")
-
-        # Attempt to parse the JSON response
-        conversation_script = json.loads(raw_content)
-
-        # Truncate script based on max_words
-        truncated_script = []
-        total_words = 0
-        for part in conversation_script:
-            word_count = len(part["text"].split())
-            if total_words + word_count <= max_words:
-                truncated_script.append(part)
-                total_words += word_count
-            else:
-                break
-        return truncated_script
-
+        return json.loads(raw_content)
     except json.JSONDecodeError as e:
         logging.error(f"Invalid JSON in API response: {e}")
         logging.error(f"Raw response content:\n{raw_content}")
@@ -185,7 +168,7 @@ def synthesize_cloned_voice(text, speaker):
         temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
         with open(temp_audio_file.name, "wb") as f:
             f.write(audio_content)
-        return temp_audio_file.name
+        return AudioSegment.from_file(temp_audio_file.name)
     except Exception as e:
         logging.error(f"Error synthesizing speech for {speaker}: {e}")
         return None
@@ -222,27 +205,16 @@ def create_video_with_audio(images, script, audio_segments, duration_seconds):
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
         return None
 
-    # Ensure the number of images, script parts, and audio segments match
-    if len(images) != len(script) or len(script) != len(audio_segments):
-        st.error("Mismatch between the number of images, script parts, and audio segments.")
-        return None
-
     clips = []
-    total_duration = 0
-
     for image, part, audio in zip(images, script, audio_segments):
         segment_duration = len(audio) / 1000  # Convert audio length to seconds
-        total_duration += segment_duration
-
         output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        if add_text_overlay(image, part["text"], output_path, local_font_path):
-            # Create a video clip with text overlay and corresponding audio
+        if add_text_overlay(image, part["text"], output_path):
             video_clip = ImageClip(output_path).set_duration(segment_duration)
-            audio_clip = AudioFileClip(audio.export(tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name, format="mp3"))
-            video_clip = video_clip.set_audio(audio_clip)
+            audio_clip = audio.export(tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name, format="mp3")
+            video_clip = video_clip.set_audio(AudioFileClip(audio_clip))
             clips.append(video_clip)
 
-    # Concatenate video clips
     if not clips:
         st.error("No video clips could be created.")
         return None
@@ -262,7 +234,6 @@ if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        # Scrape text and images from the provided URL
         images, text = scrape_images_and_text(url_input.strip())
         if text:
             summary = summarize_content(text)
@@ -270,11 +241,8 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
-                    audio_segments = []
-                    for part in conversation_script:
-                        audio = synthesize_cloned_voice(part["text"], part["speaker"])
-                        if audio:
-                            audio_segments.append(audio)
+                    audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
+                    audio_segments = [audio for audio in audio_segments if audio]
                     if audio_segments:
                         combined_audio = sum(audio_segments, AudioSegment.empty())
                         podcast_file = "podcast.mp3"
@@ -283,7 +251,6 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        # Generate video with audio
                         video_file = create_video_with_audio(images, conversation_script, audio_segments, duration)
                         if video_file:
                             st.success("Video created successfully!")
