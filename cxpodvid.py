@@ -279,21 +279,14 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        # Generate video and retrieve temp files
-                        video_file, temp_files = create_video_with_audio(images, conversation_script, audio_segments)
+                        # Generate video
+                        video_file = create_video_with_audio(images, conversation_script, audio_segments)
                         if video_file:
                             st.success("Video created successfully!")
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
-
-                            # Preview overlayed images after video is created
-                            st.write("Preview images with text overlay:")
-                            for overlay_path in temp_files:
-                                if overlay_path.endswith(".jpg"):
-                                    st.image(overlay_path, caption=f"Overlay: {overlay_path}")
                         else:
                             st.error("Failed to create the video.")
-
                     else:
                         st.error("Failed to synthesize audio for the script.")
                 else:
