@@ -10,9 +10,9 @@ from pydub import AudioSegment
 from elevenlabs.client import ElevenLabs
 import tempfile
 import json
-from moviepy.editor import ImageClip, concatenate_videoclips, TextClip, CompositeVideoClip
+from moviepy.editor import ImageClip, concatenate_videoclips, CompositeVideoClip
 from urllib.parse import urljoin
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
 # Load environment variables
@@ -149,17 +149,43 @@ def synthesize_cloned_voice(text, speaker):
         st.error(f"Error synthesizing speech for {speaker}: {e}")
         return None
 
+# Add text to image using PIL
+def add_text_to_image(image_path, text, font_size=24):
+    try:
+        img = Image.open(image_path)
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.load_default()
+
+        # Calculate text size and position
+        text_width, text_height = draw.textsize(text, font=font)
+        text_x = (img.width - text_width) // 2
+        text_y = img.height - text_height - 20  # Padding from bottom
+
+        # Add background for text
+        draw.rectangle(
+            [(text_x - 10, text_y - 10), (text_x + text_width + 10, text_y + text_height + 10)],
+            fill="black"
+        )
+        # Add text
+        draw.text((text_x, text_y), text, font=font, fill="white")
+
+        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+        img.save(temp_img.name, format="PNG")
+        return temp_img.name
+    except Exception as e:
+        st.error(f"Error adding text to image: {e}")
+        return None
+
 # Create video using images and captions
 def create_video(images, script, duration_seconds):
     clips = []
     segment_duration = duration_seconds / len(script)
 
     for i, (image, part) in enumerate(zip(images, script)):
-        img_clip = ImageClip(image).set_duration(segment_duration)
-        text_clip = TextClip(part["text"], fontsize=24, color='white', bg_color='black', size=img_clip.size)
-        text_clip = text_clip.set_duration(segment_duration).set_position('bottom')
-        composite_clip = CompositeVideoClip([img_clip, text_clip])
-        clips.append(composite_clip)
+        text_image_path = add_text_to_image(image, part["text"])
+        if text_image_path:
+            img_clip = ImageClip(text_image_path).set_duration(segment_duration)
+            clips.append(img_clip)
 
     final_video = concatenate_videoclips(clips)
     video_file = "video_short.mp4"
