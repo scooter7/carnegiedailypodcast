@@ -287,7 +287,8 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        video_file = create_video_with_audio(images, conversation_script, audio_segments, duration)
+                        # Fix function call: Removed `duration`
+                        video_file = create_video_with_audio(images, conversation_script, audio_segments)
                         if video_file:
                             st.success("Video created successfully!")
                             st.video(video_file)
@@ -301,3 +302,4 @@ if st.button("Generate Content"):
                 st.error("Failed to summarize content.")
         else:
             st.error("Failed to scrape content.")
+
