@@ -31,14 +31,6 @@ speaker_voice_map = {
     "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the ID of your cloned voice
 }
 
-# System prompt for podcast script generation
-system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
-Include relevant statistics, facts, and insights based on the summaries. 
-Format the response strictly as a JSON array of objects, each with 'speaker' and 'text' keys. 
-Only return JSON without additional text, explanations, or formatting.
-"""
-
 # Font file URL and local path
 font_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/Arial.ttf"
 local_font_path = "Arial.ttf"
@@ -67,16 +59,18 @@ def max_words_for_duration(duration_seconds):
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
     for url in image_urls[:max_images]:
-        if url.lower().endswith(("png", "jpg", "jpeg")):
+        if url.lower().endswith(("png", "jpg", "jpeg", "webp")):
             valid_images.append(url)
     return valid_images
 
-# Download and save an image locally
+# Download and save an image locally, handling RGBA to RGB conversion
 def download_image(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
+        if img.mode == "RGBA":
+            img = img.convert("RGB")
         temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
         img.save(temp_path, "JPEG")
         return temp_path
