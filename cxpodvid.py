@@ -175,12 +175,12 @@ def synthesize_cloned_voice(text, speaker):
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
     try:
-        # Fetch image directly from URL
+        # Fetch the image from the URL
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
-        # Prepare text overlay
+        # Prepare the text overlay
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
         wrapped_text = textwrap.fill(text, width=40)
@@ -188,10 +188,11 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position and overlay
+        # Position text at the bottom center
         x_start = (img.width - text_width) // 2
         y_start = img.height - text_height - 20
 
+        # Add a semi-transparent rectangle as a background for the text
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
@@ -201,7 +202,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.alpha_composite(img, overlay)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Convert to NumPy array
+        # Convert to a NumPy array (compatible with moviepy)
         img_np = np.array(img.convert("RGB"))
         return img_np
     except Exception as e:
@@ -211,48 +212,43 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
-        return None, []
+        return None
 
     clips = []
-    temp_files = []  # Track temporary files
 
     try:
         for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
-            # Add text overlay
+            # Generate overlayed image as NumPy array
             overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
             if overlay_image is None:
                 logging.warning(f"Skipping invalid image: {image_url}")
                 continue
 
-            # Save NumPy array as a temporary image file
-            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
-            Image.fromarray(overlay_image).save(temp_file.name)
-            temp_file.close()
-            temp_files.append(temp_file.name)
-
             # Create audio file
             audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
-            temp_files.append(audio_path)
 
+            # Create video clip
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(temp_file.name, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+            image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
             clips.append(image_clip)
 
+        # Concatenate clips into a final video
         if clips:
             final_video = concatenate_videoclips(clips, method="compose")
             video_file_path = "final_video.mp4"
             final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
             logging.info(f"Video successfully created: {video_file_path}")
-            return video_file_path, temp_files
+            return video_file_path
         else:
             st.error("No video clips were created.")
-            return None, temp_files
+            return None
     finally:
-        # Cleanup temporary files
-        for audio_path in temp_files:
+        # Clean up audio files
+        for idx in range(len(audio_segments)):
+            audio_path = f"audio_{idx}.mp3"
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
