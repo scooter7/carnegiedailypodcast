@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import textwrap
 import logging
-import numpy
+import numpy as np
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
