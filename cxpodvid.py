@@ -129,7 +129,7 @@ def summarize_content(text):
 # Generate script using OpenAI
 def generate_script(enriched_text, max_words):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words in total."},
@@ -139,10 +139,15 @@ def generate_script(enriched_text, max_words):
         raw_content = response.choices[0].message.content.strip()
         logging.info(f"Raw OpenAI response: {raw_content}")  # Log the raw response for debugging
 
-        # Remove surrounding Markdown backticks if present
+        # Remove surrounding Markdown backticks and potential "json" identifier
         if raw_content.startswith("```") and raw_content.endswith("```"):
             raw_content = raw_content.strip("```").strip()
-            logging.info("Removed surrounding backticks from the JSON content.")
+
+        # Remove any leading "json" keyword
+        if raw_content.lower().startswith("json"):
+            raw_content = raw_content[4:].strip()
+
+        logging.info(f"Processed content after cleanup: {raw_content}")
 
         # Attempt to parse the JSON response
         conversation_script = json.loads(raw_content)
