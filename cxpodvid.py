@@ -100,12 +100,7 @@ def scrape_images_and_text(url):
 
         # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
-        valid_images = filter_valid_images(image_urls)
-
-        # Log and preview images
-        logging.info(f"Downloaded valid images: {valid_images}")
-        for img in valid_images:
-            st.image(img, caption=f"Downloaded Image: {img}")
+        valid_images = [url for url in image_urls if any(url.lower().endswith(ext) for ext in ["jpg", "jpeg", "png"])]
 
         # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
@@ -177,25 +172,25 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-def add_text_overlay(image_path, text, output_path, font_path):
+def add_text_overlay_on_fly(image_url, text, font_path):
     try:
-        img = Image.open(image_path).convert("RGBA")
+        # Fetch image directly from URL
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content)).convert("RGBA")
+
+        # Prepare text overlay
         draw = ImageDraw.Draw(img)
-
-        # Load font
         font = ImageFont.truetype(font_path, size=30)
-
-        # Wrap text
         wrapped_text = textwrap.fill(text, width=40)
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position text
+        # Position and overlay
         x_start = (img.width - text_width) // 2
         y_start = img.height - text_height - 20
 
-        # Draw semi-transparent background
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
@@ -203,45 +198,38 @@ def add_text_overlay(image_path, text, output_path, font_path):
             fill=(0, 0, 0, 180)
         )
         img = Image.alpha_composite(img, overlay)
-
-        # Add text
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save image
-        img.convert("RGB").save(output_path, "JPEG")
-        logging.info(f"Text overlay added to image: {output_path}")
-        return output_path
+        # Convert to in-memory JPEG
+        buffer = BytesIO()
+        img.convert("RGB").save(buffer, format="JPEG")
+        buffer.seek(0)
+        return buffer
     except Exception as e:
-        logging.error(f"Error in add_text_overlay: {e}")
+        logging.error(f"Error adding text overlay to image from {image_url}: {e}")
         return None
 
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
-        return None, []
+        return None
 
     clips = []
-    temp_files = []
-
     try:
-        for idx, (image, part, audio) in enumerate(zip(images, script, audio_segments)):
+        for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
-            # Add text overlay to image
-            temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
-            if not text_overlay_path:
+            # Create text overlay directly from URL
+            overlay_buffer = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
+            if not overlay_buffer:
                 continue
-            temp_files.append(text_overlay_path)
 
-            # Create audio file
-            audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+            # Load image as ImageClip
+            audio_path = f"audio_{idx}.mp3"
             audio.export(audio_path, format="mp3")
-            temp_files.append(audio_path)
 
-            # Create video clip
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+            image_clip = ImageClip(overlay_buffer, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
             clips.append(image_clip)
 
         if clips:
@@ -249,15 +237,15 @@ def create_video_with_audio(images, script, audio_segments):
             video_file_path = "final_video.mp4"
             final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
             logging.info(f"Video successfully created: {video_file_path}")
-            return video_file_path, temp_files
+            return video_file_path
         else:
             st.error("No video clips were created.")
-            return None, temp_files
+            return None
     finally:
-        # Cleanup temporary files
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        for idx in range(len(audio_segments)):
+            audio_path = f"audio_{idx}.mp3"
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
