@@ -76,42 +76,38 @@ def download_image(url):
     except Exception as e:
         logging.warning(f"Failed to download or process image: {url}. Error: {e}")
         return None
-        
-st.image(image_path, caption=f"Input Image from {image_path}")
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
     for url in image_urls[:max_images]:
-        # Skip unsupported formats
         if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp", "gif"]):
             logging.info(f"Skipping unsupported image format: {url}")
             continue
         image_path = download_image(url)
         if image_path:
             valid_images.append(image_path)
+    logging.info(f"Filtered valid images: {valid_images}")
     return valid_images
 
 # Scrape images and text from a URL
 def scrape_images_and_text(url):
     try:
         response = requests.get(url, timeout=10)
-        if response.status_code != 200:
-            raise ValueError(f"Received {response.status_code} status code for URL: {url}")
-
+        response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract images
+        # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = filter_valid_images(image_urls)
 
-        # Log downloaded image paths
+        # Log and preview images
         logging.info(f"Downloaded valid images: {valid_images}")
+        for img in valid_images:
+            st.image(img, caption=f"Downloaded Image: {img}")
 
-        # Extract text
+        # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        if not text:
-            logging.warning("No textual content found on the page.")
         return valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
@@ -182,67 +178,42 @@ def synthesize_cloned_voice(text, speaker):
 # Add text overlay to an image
 def add_text_overlay(image_path, text, output_path, font_path):
     try:
-        # Load image
         img = Image.open(image_path).convert("RGBA")
-        logging.info(f"Overlaying text on image: {image_path}, size: {img.size}")
-
         draw = ImageDraw.Draw(img)
 
-        # Validate font path
-        if not os.path.exists(font_path):
-            raise FileNotFoundError(f"Font file not found: {font_path}")
-        
         # Load font
         font = ImageFont.truetype(font_path, size=30)
-        logging.info(f"Font loaded successfully: {font_path}")
 
         # Wrap text
-        max_chars = 40
-        wrapped_text = textwrap.fill(text, width=max_chars)
-        logging.info(f"Wrapped text: {wrapped_text}")
-
-        # Measure text dimensions
+        wrapped_text = textwrap.fill(text, width=40)
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        logging.info(f"Text dimensions: width={text_width}, height={text_height}")
 
-        # Position text at the bottom
+        # Position text
         x_start = max((img.width - text_width) // 2, 10)
         y_start = min(img.height - text_height - 30, img.height - 50)
-        logging.info(f"Text position: x={x_start}, y={y_start}")
 
-        # Draw background for text
+        # Draw background and overlay
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
             fill=(0, 0, 0, 180)
         )
-        logging.info("Background rectangle drawn successfully.")
-
-        # Composite background and image
         img = Image.alpha_composite(img, background)
-
-        # Draw text
-        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
-        logging.info("Text drawn successfully.")
 
-        # Save the resulting image
+        # Save and log
         img.convert("RGB").save(output_path, "JPEG")
-        logging.info(f"Image with overlay saved: {output_path}")
+        logging.info(f"Overlay image saved: {output_path}")
 
-        # Display the final overlayed image in Streamlit
+        # Preview overlayed image
         st.image(output_path, caption="Overlayed Image")
         return output_path
     except Exception as e:
         logging.error(f"Error in add_text_overlay: {e}")
-        st.error(f"Failed to overlay text: {e}")
         return None
-
-st.image(image_path, caption="Downloaded Image")
-st.image(output_path, caption="Overlayed Image")
 
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
@@ -260,7 +231,6 @@ def create_video_with_audio(images, script, audio_segments):
             temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
             text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
             if not text_overlay_path:
-                logging.error(f"Failed to add text overlay to image: {image}")
                 continue
             logging.info(f"Overlay image saved: {text_overlay_path}")
             temp_files.append(text_overlay_path)
