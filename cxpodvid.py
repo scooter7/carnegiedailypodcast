@@ -198,36 +198,6 @@ def add_text_overlay(image_path, text, output_path, font_path):
         st.error(f"Failed to add text overlay: {e}")
         return None
 
-# Create video using images and captions
-def create_video(images, script, duration_seconds):
-    if not images or not script:
-        st.error("No valid images or script provided. Cannot create video.")
-        return None
-
-    clips = []
-    segment_duration = duration_seconds / len(script)
-
-    for image, part in zip(images, script):
-        output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        if add_text_overlay(image, part["text"], output_path, local_font_path):
-            clips.append(ImageClip(output_path).set_duration(segment_duration))
-        else:
-            st.warning(f"Skipping invalid image or text: {part['text']}")
-
-    if not clips:
-        st.error("No video clips could be created.")
-        return None
-
-    try:
-        video_file = "video_short.mp4"
-        final_video = concatenate_videoclips(clips)
-        final_video.write_videofile(video_file, codec="libx264", fps=24)
-        st.write(f"Video file created: {video_file}")
-        return video_file
-    except Exception as e:
-        st.error(f"Failed to concatenate video clips. Error: {e}")
-        return None
-
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
 parent_url = st.text_input("Enter the URL of the page:")
