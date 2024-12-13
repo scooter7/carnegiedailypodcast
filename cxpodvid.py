@@ -31,11 +31,19 @@ speaker_voice_map = {
     "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with the ID of your cloned voice
 }
 
+# System prompt for the podcast script
+system_prompt = """
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+Include relevant statistics, facts, and insights based on the summaries. 
+Format the response strictly as a JSON array of objects, each with 'speaker' and 'text' keys. 
+Only return JSON without additional text, explanations, or formatting.
+"""
+
 # Font file URL and local path
 font_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/Arial.ttf"
 local_font_path = "Arial.ttf"
 
-# Function to download the font
+# Download font file
 def download_font(font_url, local_path):
     if not os.path.exists(local_path):
         try:
@@ -55,40 +63,42 @@ def max_words_for_duration(duration_seconds):
     wpm = 150  # Average words per minute
     return int((duration_seconds / 60) * wpm)
 
-# Validate and filter valid image URLs
+# Filter valid image formats
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
-    for url in image_urls[:max_images]:
+    for url in image_urls[:max_images]:  # Restrict to a maximum number of images
         if url.lower().endswith(("png", "jpg", "jpeg", "webp")):
             valid_images.append(url)
     return valid_images
 
-# Download and save an image locally, handling RGBA to RGB conversion
+# Download and convert an image to a rasterized format
 def download_image(url):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10)  # Set timeout for image download
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
         if img.mode == "RGBA":
             img = img.convert("RGB")
-        temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-        img.save(temp_path, "JPEG")
-        return temp_path
+        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
+        img.save(temp_img.name, format="JPEG")
+        return temp_img.name
     except Exception as e:
-        st.warning(f"Failed to download image: {url}. Error: {e}")
+        st.warning(f"Failed to process image: {url}. Error: {e}")
         return None
 
 # Scrape images and text from a URL
 def scrape_images_and_text(url):
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, timeout=10)  # Set timeout for scraping
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
+        # Extract images
         images = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         images = filter_valid_images(images)
         images = [download_image(img_url) for img_url in images if download_image(img_url)]
 
+        # Extract text
         text = soup.get_text(separator=" ", strip=True)
         return images, text[:5000]
     except Exception as e:
@@ -121,29 +131,35 @@ def generate_script(enriched_text, max_words):
             ]
         )
         raw_content = response.choices[0].message.content.strip()
-        conversation_script = json.loads(raw_content)
-        truncated_script = []
-        total_words = 0
-        for part in conversation_script:
-            word_count = len(part["text"].split())
-            if total_words + word_count <= max_words:
-                truncated_script.append(part)
-                total_words += word_count
-            else:
-                break
-        return truncated_script
+        try:
+            conversation_script = json.loads(raw_content)
+            truncated_script = []
+            total_words = 0
+            for part in conversation_script:
+                word_count = len(part["text"].split())
+                if total_words + word_count <= max_words:
+                    truncated_script.append(part)
+                    total_words += word_count
+                else:
+                    break
+            return truncated_script
+        except json.JSONDecodeError:
+            st.error("The API response is not valid JSON. Please check the prompt and input content.")
+            st.warning("Response content:\n" + raw_content)
+            return []
     except Exception as e:
         st.error(f"Error generating script: {e}")
         return []
 
-# Add text overlay to an image
+# Add text to image using PIL
 def add_text_overlay(image_path, text, output_path, font_path):
+    """Add captions to an image using Pillow with text wrapping and debugging."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        max_text_width = img.width - 40
+        max_text_width = img.width - 40  # Padding of 20px on each side
         wrapped_text = textwrap.fill(text, width=40)
 
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
