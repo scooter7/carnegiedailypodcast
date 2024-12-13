@@ -12,7 +12,6 @@ import tempfile
 import json
 from moviepy.editor import ImageClip, concatenate_videoclips, TextClip, CompositeVideoClip
 from urllib.parse import urljoin
-import time
 
 # Load environment variables
 load_dotenv()
@@ -32,7 +31,9 @@ speaker_voice_map = {
 # System prompt for the podcast script
 system_prompt = """
 You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
-Include relevant statistics, facts, and insights based on the summaries. The conversation should feel conversational and engaging.
+Include relevant statistics, facts, and insights based on the summaries. 
+Format the response strictly as a JSON array of objects, each with 'speaker' and 'text' keys. 
+Only return JSON without additional text, explanations, or formatting.
 """
 
 # Function to scrape images and text from a URL
@@ -67,28 +68,27 @@ def summarize_content(text):
         st.warning(f"Error summarizing content: {e}")
         return ""
 
-# Generate podcast script with retry logic
-def generate_script(enriched_text, duration_seconds, retries=3):
-    for attempt in range(retries):
+# Generate podcast script with strict JSON validation
+def generate_script(enriched_text, duration_seconds):
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"{system_prompt} Ensure the script fits within {duration_seconds} seconds."},
+                {"role": "user", "content": enriched_text}
+            ]
+        )
+        raw_content = response.choices[0].message.content.strip()
         try:
-            response = openai.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[
-                    {"role": "system", "content": f"{system_prompt} The script should fit within {duration_seconds} seconds."},
-                    {"role": "user", "content": enriched_text}
-                ]
-            )
-            raw_content = response.choices[0].message.content.strip()
-            try:
-                return json.loads(raw_content)
-            except json.JSONDecodeError:
-                st.error("The API response is not valid JSON. Response content: " + raw_content)
-                return []
-        except Exception as e:
-            st.warning(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(2)  # Wait before retrying
-    st.error("All retries failed.")
-    return []
+            # Validate JSON format
+            return json.loads(raw_content)
+        except json.JSONDecodeError:
+            st.error("The API response is not valid JSON. Please check the prompt and input content.")
+            st.warning("Response content:\n" + raw_content)
+            return []
+    except Exception as e:
+        st.error(f"Error generating script: {e}")
+        return []
 
 # Synthesize speech using ElevenLabs
 def synthesize_cloned_voice(text, speaker):
