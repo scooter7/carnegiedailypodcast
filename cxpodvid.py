@@ -174,28 +174,24 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-def add_text_overlay(image_path, text, output_path, font_path):
-    """Adds text overlay to an image and saves it."""
+def add_text_overlay(image_path, text, font_path, output_path):
+    """Adds text overlay to an image."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
 
-        # Load the font
+        # Load font and wrap text
         font = ImageFont.truetype(font_path, size=30)
-
-        # Wrap the text
         wrapped_text = textwrap.fill(text, width=40)
 
-        # Calculate text dimensions
+        # Calculate text dimensions and position
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-
-        # Position the text
         x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 30
+        y_start = img.height - text_height - 50  # Adjust for padding at the bottom
 
-        # Draw background for text
+        # Draw background rectangle for text
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
@@ -204,11 +200,11 @@ def add_text_overlay(image_path, text, output_path, font_path):
         )
         img = Image.alpha_composite(img, background)
 
-        # Draw the text on top
+        # Add the text
         draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save the image
+        # Save the image with text overlay
         img.convert("RGB").save(output_path, "JPEG")
         return output_path
     except Exception as e:
@@ -228,20 +224,21 @@ def create_video_with_audio(images, script, audio_segments):
         for image, part, audio in zip(images, script, audio_segments):
             # Add text overlay to the image
             temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
+            text_overlay_path = add_text_overlay(image, part["text"], local_font_path, temp_image_path)
             if not text_overlay_path:
-                logging.error(f"Failed to add text overlay to image: {image}")
+                logging.error(f"Failed to add text overlay for image: {image}")
                 continue
             temp_files.append(text_overlay_path)
 
-            # Create video clip
+            # Export audio segment to a temporary file
             audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
             audio.export(audio_path, format="mp3")
             temp_files.append(audio_path)
 
+            # Create video clip
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration)
-            image_clip = image_clip.set_audio(audio_clip).set_fps(24)
+            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration).set_audio(audio_clip)
+            image_clip = image_clip.set_fps(24)
 
             clips.append(image_clip)
 
