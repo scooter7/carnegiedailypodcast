@@ -14,3 +14,4 @@ pydub
 pysqlite3-binary
 elevenlabs
 beautifulsoup4
+moviepy
