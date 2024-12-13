@@ -180,43 +180,47 @@ def synthesize_cloned_voice(text, speaker):
 # Add text overlay to an image
 def add_text_overlay(image_path, text, output_path, font_path):
     try:
+        # Load image
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
 
-        # Load the font
+        # Load font
+        if not os.path.exists(font_path):
+            raise FileNotFoundError(f"Font file not found: {font_path}")
         font = ImageFont.truetype(font_path, size=30)
 
-        # Wrap the text
-        wrapped_text = textwrap.fill(text, width=40)
+        # Wrap text to fit within the image width
+        max_chars = 40  # Approx. characters per line
+        wrapped_text = textwrap.fill(text, width=max_chars)
 
-        # Calculate text dimensions
+        # Measure text size
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position the text (Ensure it's always within bounds)
-        x_start = max((img.width - text_width) // 2, 10)  # Add padding of 10px
+        # Position text near the bottom of the image
+        x_start = max((img.width - text_width) // 2, 10)  # Ensure padding
         y_start = min(img.height - text_height - 30, img.height - 50)  # Ensure bottom padding
 
-        # Draw background for text
+        # Create background for text
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 200)  # Make background semi-transparent
+            fill=(0, 0, 0, 180)  # Semi-transparent black
         )
         img = Image.alpha_composite(img, background)
 
-        # Draw the text on top
+        # Draw the text
         draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save the image
+        # Save the resulting image
         img.convert("RGB").save(output_path, "JPEG")
         logging.info(f"Text overlay added to image: {output_path}")
         return output_path
     except Exception as e:
-        logging.error(f"Failed to add text overlay: {e}")
+        logging.error(f"Error in add_text_overlay: {e}")
         return None
 
 def create_video_with_audio(images, script, audio_segments):
