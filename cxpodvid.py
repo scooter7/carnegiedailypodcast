@@ -132,6 +132,23 @@ def generate_script(enriched_text, max_words):
         st.error(f"Error generating script: {e}")
         return []
 
+# Synthesize speech using ElevenLabs
+def synthesize_cloned_voice(text, speaker):
+    try:
+        audio_generator = elevenlabs_client.generate(
+            text=text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_multilingual_v2"
+        )
+        audio_content = b"".join(audio_generator)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
+            temp_audio_file.write(audio_content)
+            temp_audio_path = temp_audio_file.name
+        return AudioSegment.from_file(temp_audio_path, format="mp3")
+    except Exception as e:
+        st.error(f"Error synthesizing speech for {speaker}: {e}")
+        return None
+
 # Create video using images and captions
 def create_video(images, script, duration_seconds):
     clips = []
