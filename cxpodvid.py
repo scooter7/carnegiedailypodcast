@@ -180,19 +180,21 @@ def add_text_overlay(image_path, text, output_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(local_font_path, size=30)
         wrapped_text = textwrap.fill(text, width=40)
+
+        # Calculate text dimensions and position
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
+        text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
+        x_start = (img.width - text_width) // 2  # Center horizontally
+        y_start = img.height - text_height - 30  # Place near the bottom
 
-        x_start = 20
-        y_start = img.height - (text_bbox[3] - text_bbox[1]) - 30
-
-        # Add background rectangle for text
-        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        # Draw background rectangle for text
         draw.rectangle(
-            [(x_start - 10, y_start - 10), (x_start + text_bbox[2] + 10, y_start + text_bbox[3] + 10)],
+            [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
             fill=(0, 0, 0, 128)
         )
-        img = Image.alpha_composite(img, background)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
+
+        # Save the modified image
         img.convert("RGB").save(output_path, "JPEG")
         return output_path
     except Exception as e:
@@ -215,18 +217,18 @@ def create_video_with_audio(images, script, audio_segments, duration_seconds):
 
             # Add text overlay to the image
             output_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            temp_files.append(output_image_path)
             if not add_text_overlay(image, part["text"], output_image_path):
-                st.error("Failed to add text overlay.")
+                logging.error(f"Failed to add text overlay for image: {image}")
                 continue
+            temp_files.append(output_image_path)
 
             # Create a video clip from the image with the text overlay
             video_clip = ImageClip(output_image_path).set_duration(segment_duration)
 
             # Export the audio segment to a temporary file
             temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-            temp_files.append(temp_audio_file)
             audio.export(temp_audio_file, format="mp3")
+            temp_files.append(temp_audio_file)
             audio_clip = AudioFileClip(temp_audio_file)
 
             # Combine the video clip with the audio
@@ -281,6 +283,7 @@ if st.button("Generate Content"):
                             st.success("Video created successfully!")
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
+
                     else:
                         st.error("Failed to synthesize audio for the script.")
                 else:
