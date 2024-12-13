@@ -139,6 +139,11 @@ def generate_script(enriched_text, max_words):
         raw_content = response.choices[0].message.content.strip()
         logging.info(f"Raw OpenAI response: {raw_content}")  # Log the raw response for debugging
 
+        # Remove surrounding Markdown backticks if present
+        if raw_content.startswith("```") and raw_content.endswith("```"):
+            raw_content = raw_content.strip("```").strip()
+            logging.info("Removed surrounding backticks from the JSON content.")
+
         # Attempt to parse the JSON response
         conversation_script = json.loads(raw_content)
 
@@ -153,6 +158,7 @@ def generate_script(enriched_text, max_words):
             else:
                 break
         return truncated_script
+
     except json.JSONDecodeError as e:
         logging.error(f"Invalid JSON in API response: {e}")
         logging.error(f"Raw response content:\n{raw_content}")
@@ -161,7 +167,6 @@ def generate_script(enriched_text, max_words):
     except Exception as e:
         logging.error(f"Error generating script: {e}")
         return []
-
 
 # Synthesize speech with ElevenLabs
 def synthesize_cloned_voice(text, speaker):
