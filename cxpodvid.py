@@ -194,16 +194,16 @@ def add_text_overlay(image_path, text, output_path, font_path):
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Position the text
-        x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 30
+        # Position the text (Ensure it's always within bounds)
+        x_start = max((img.width - text_width) // 2, 10)  # Add padding of 10px
+        y_start = min(img.height - text_height - 30, img.height - 50)  # Ensure bottom padding
 
         # Draw background for text
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_bg = ImageDraw.Draw(background)
         draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 128)
+            fill=(0, 0, 0, 200)  # Make background semi-transparent
         )
         img = Image.alpha_composite(img, background)
 
@@ -249,6 +249,7 @@ def create_video_with_audio(images, script, audio_segments):
             image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration)
             image_clip = image_clip.set_audio(audio_clip).set_fps(24)
 
+            logging.info(f"Created video clip for image {idx + 1}")
             clips.append(image_clip)
 
         # Concatenate video clips
@@ -266,6 +267,12 @@ def create_video_with_audio(images, script, audio_segments):
         for temp_file in temp_files:
             if os.path.exists(temp_file):
                 os.remove(temp_file)
+                
+# After generating overlays in create_video_with_audio
+st.write("Preview images with text overlay:")
+for overlay_path in temp_files:
+    if overlay_path.endswith(".jpg"):
+        st.image(overlay_path, caption=f"Overlay: {overlay_path}")
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
