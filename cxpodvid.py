@@ -14,6 +14,10 @@ from urllib.parse import urljoin
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 import textwrap
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
 
 # Load environment variables
 load_dotenv()
@@ -69,19 +73,20 @@ def download_image(url):
         img.save(temp_img.name, format="JPEG")
         return temp_img.name
     except Exception as e:
-        st.warning(f"Failed to download or process image: {url}. Error: {e}")
+        logging.warning(f"Failed to download or process image: {url}. Error: {e}")
         return None
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
     for url in image_urls[:max_images]:
-        try:
-            image_path = download_image(url)
-            if image_path:
-                valid_images.append(image_path)
-        except Exception as e:
-            st.warning(f"Error processing image: {url}. Error: {e}")
+        # Skip unsupported formats
+        if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp", "gif"]):
+            logging.info(f"Skipping unsupported image format: {url}")
+            continue
+        image_path = download_image(url)
+        if image_path:
+            valid_images.append(image_path)
     return valid_images
 
 # Scrape images and text from a URL
@@ -99,7 +104,7 @@ def scrape_images_and_text(url):
         text = soup.get_text(separator=" ", strip=True)
         return valid_images, text[:5000]
     except Exception as e:
-        st.error(f"Error scraping content from {url}: {e}")
+        logging.error(f"Error scraping content from {url}: {e}")
         return [], ""
 
 # Summarize content using OpenAI
@@ -114,7 +119,7 @@ def summarize_content(text):
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        st.warning(f"Error summarizing content: {e}")
+        logging.warning(f"Error summarizing content: {e}")
         return ""
 
 # Generate script using OpenAI
@@ -130,7 +135,7 @@ def generate_script(summary, max_words):
         script_content = response.choices[0].message.content.strip()
         return json.loads(script_content)
     except (json.JSONDecodeError, Exception) as e:
-        st.error(f"Error generating script: {e}")
+        logging.error(f"Error generating script: {e}")
         return []
 
 # Synthesize speech with ElevenLabs
@@ -147,7 +152,7 @@ def synthesize_cloned_voice(text, speaker):
             f.write(audio_content)
         return temp_audio_file.name
     except Exception as e:
-        st.error(f"Error synthesizing speech for {speaker}: {e}")
+        logging.error(f"Error synthesizing speech for {speaker}: {e}")
         return None
 
 # Add text overlay to an image
@@ -164,24 +169,22 @@ def add_text_overlay(image_path, text, output_path):
 
         # Add background rectangle for text
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        draw = ImageDraw.Draw(background)
         draw.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_bbox[2] + 10, y_start + text_bbox[3] + 10)],
             fill=(0, 0, 0, 128)
         )
         img = Image.alpha_composite(img, background)
-        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
         img.convert("RGB").save(output_path, "JPEG")
         return output_path
     except Exception as e:
-        st.error(f"Failed to add text overlay: {e}")
+        logging.error(f"Failed to add text overlay: {e}")
         return None
 
 # Create video using MoviePy
 def create_video(images, script, audio_files, duration_seconds):
     if not images or not script or not audio_files:
-        st.error("Insufficient data to create video.")
+        logging.error("Insufficient data to create video.")
         return None
 
     clips = []
@@ -201,7 +204,7 @@ def create_video(images, script, audio_files, duration_seconds):
         final_video.write_videofile(video_file, codec="libx264", fps=24)
         return video_file
     else:
-        st.error("No video clips created.")
+        logging.error("No video clips created.")
         return None
 
 # Streamlit app interface
@@ -224,10 +227,10 @@ if st.button("Generate Content"):
                         st.video(video_file)
                         st.download_button("Download Video", open(video_file, "rb"), file_name="final_video.mp4")
                 else:
-                    st.error("Failed to generate script.")
+                    logging.error("Failed to generate script.")
             else:
-                st.error("Failed to summarize text.")
+                logging.error("Failed to summarize text.")
         else:
-            st.error("Failed to scrape content.")
+            logging.error("Failed to scrape content.")
     else:
         st.error("Please enter a valid URL.")
