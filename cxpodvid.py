@@ -65,8 +65,8 @@ def download_image(url):
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
 
-        # Convert unsupported image modes to RGB
-        if img.mode not in ["RGB", "RGBA"]:
+        # Handle RGBA images by converting them to RGB
+        if img.mode == "RGBA":
             img = img.convert("RGB")
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -93,7 +93,9 @@ def filter_valid_images(image_urls, max_images=5):
 def scrape_images_and_text(url):
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()
+        if response.status_code != 200:
+            raise ValueError(f"Received {response.status_code} status code for URL: {url}")
+
         soup = BeautifulSoup(response.text, "html.parser")
 
         # Extract images
@@ -102,6 +104,8 @@ def scrape_images_and_text(url):
 
         # Extract text
         text = soup.get_text(separator=" ", strip=True)
+        if not text:
+            logging.warning("No textual content found on the page.")
         return valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
@@ -110,7 +114,7 @@ def scrape_images_and_text(url):
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize the following content into key points."},
@@ -125,7 +129,7 @@ def summarize_content(text):
 # Generate script using OpenAI
 def generate_script(summary, max_words):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words."},
