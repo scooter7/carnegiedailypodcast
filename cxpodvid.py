@@ -174,77 +174,86 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-def add_text_overlay(image_path, text, output_path):
+def add_text_overlay(image_path, text, output_path, font_path):
+    """Adds text overlay to an image and saves it."""
     try:
         img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(local_font_path, size=30)
+
+        # Load the font
+        font = ImageFont.truetype(font_path, size=30)
+
+        # Wrap the text
         wrapped_text = textwrap.fill(text, width=40)
 
-        # Calculate text dimensions and position
+        # Calculate text dimensions
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width, text_height = text_bbox[2] - text_bbox[0], text_bbox[3] - text_bbox[1]
-        x_start = (img.width - text_width) // 2  # Center horizontally
-        y_start = img.height - text_height - 30  # Place near the bottom
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
 
-        # Draw background rectangle for text
-        draw.rectangle(
+        # Position the text
+        x_start = (img.width - text_width) // 2
+        y_start = img.height - text_height - 30
+
+        # Draw background for text
+        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        draw_bg = ImageDraw.Draw(background)
+        draw_bg.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
             fill=(0, 0, 0, 128)
         )
+        img = Image.alpha_composite(img, background)
+
+        # Draw the text on top
+        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save the modified image
+        # Save the image
         img.convert("RGB").save(output_path, "JPEG")
         return output_path
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Create video with synchronized audio
-def create_video_with_audio(images, script, audio_segments, duration_seconds):
+def create_video_with_audio(images, script, audio_segments):
+    """Creates a video with synchronized images and audio."""
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
         return None
 
     clips = []
-    temp_files = []  # Track temporary files for cleanup
+    temp_files = []
 
     try:
         for image, part, audio in zip(images, script, audio_segments):
-            # Calculate segment duration based on audio length
-            segment_duration = len(audio) / 1000  # Convert audio length to seconds
-
             # Add text overlay to the image
-            output_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            if not add_text_overlay(image, part["text"], output_image_path):
-                logging.error(f"Failed to add text overlay for image: {image}")
+            temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
+            text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
+            if not text_overlay_path:
+                logging.error(f"Failed to add text overlay to image: {image}")
                 continue
-            temp_files.append(output_image_path)
+            temp_files.append(text_overlay_path)
 
-            # Create a video clip from the image with the text overlay
-            video_clip = ImageClip(output_image_path).set_duration(segment_duration)
+            # Create video clip
+            audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+            audio.export(audio_path, format="mp3")
+            temp_files.append(audio_path)
 
-            # Export the audio segment to a temporary file
-            temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-            audio.export(temp_audio_file, format="mp3")
-            temp_files.append(temp_audio_file)
-            audio_clip = AudioFileClip(temp_audio_file)
+            audio_clip = AudioFileClip(audio_path)
+            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration)
+            image_clip = image_clip.set_audio(audio_clip).set_fps(24)
 
-            # Combine the video clip with the audio
-            video_clip = video_clip.set_audio(audio_clip)
-            clips.append(video_clip)
+            clips.append(image_clip)
 
-        if not clips:
-            st.error("No video clips could be created.")
+        # Concatenate video clips
+        if clips:
+            final_video = concatenate_videoclips(clips, method="compose")
+            video_file_path = "final_video.mp4"
+            final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
+            return video_file_path
+        else:
+            st.error("No video clips were created.")
             return None
-
-        # Concatenate all the clips to create the final video
-        final_video = concatenate_videoclips(clips, method="compose")
-        video_file = "video_with_audio.mp4"
-        final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
-        return video_file
-
     finally:
         # Cleanup temporary files
         for temp_file in temp_files:
