@@ -127,20 +127,41 @@ def summarize_content(text):
         return ""
 
 # Generate script using OpenAI
-def generate_script(summary, max_words):
+def generate_script(enriched_text, max_words):
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words."},
-                {"role": "user", "content": summary}
+                {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words in total."},
+                {"role": "user", "content": enriched_text}
             ]
         )
-        script_content = response.choices[0].message.content.strip()
-        return json.loads(script_content)
-    except (json.JSONDecodeError, Exception) as e:
+        raw_content = response.choices[0].message.content.strip()
+        logging.info(f"Raw OpenAI response: {raw_content}")  # Log the raw response for debugging
+
+        # Attempt to parse the JSON response
+        conversation_script = json.loads(raw_content)
+
+        # Truncate script based on max_words
+        truncated_script = []
+        total_words = 0
+        for part in conversation_script:
+            word_count = len(part["text"].split())
+            if total_words + word_count <= max_words:
+                truncated_script.append(part)
+                total_words += word_count
+            else:
+                break
+        return truncated_script
+    except json.JSONDecodeError as e:
+        logging.error(f"Invalid JSON in API response: {e}")
+        logging.error(f"Raw response content:\n{raw_content}")
+        st.error("The API response is not valid JSON. Please check the prompt and input content.")
+        return []
+    except Exception as e:
         logging.error(f"Error generating script: {e}")
         return []
+
 
 # Synthesize speech with ElevenLabs
 def synthesize_cloned_voice(text, speaker):
