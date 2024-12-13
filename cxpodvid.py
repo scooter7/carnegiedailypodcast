@@ -154,7 +154,7 @@ def add_text_to_image(image_path, text, font_size=24):
     try:
         img = Image.open(image_path)
         draw = ImageDraw.Draw(img)
-        font = ImageFont.load_default()
+        font = ImageFont.truetype("arial.ttf", font_size)  # Use a default font
 
         # Calculate text size and position
         text_width, text_height = draw.textsize(text, font=font)
