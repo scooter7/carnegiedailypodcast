@@ -30,39 +30,46 @@ speaker_voice_map = {
     "Ali": "NYy9s57OPECPcDJavL3T"
 }
 
-# System prompt for script generation
+# System prompt for the podcast script
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based, conversational dialogue between Ali and Lisa. 
-Include relevant statistics and insights. Format the response strictly as a JSON array of objects with 'speaker' and 'text' keys.
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+Include relevant statistics, facts, and insights based on the summaries. 
+Format the response strictly as a JSON array of objects, each with 'speaker' and 'text' keys. 
+Only return JSON without additional text, explanations, or formatting.
 """
 
-# Download font file for text overlay
+# Font file URL and local path
 font_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/Arial.ttf"
 local_font_path = "Arial.ttf"
 
+# Download font file
 def download_font(font_url, local_path):
     if not os.path.exists(local_path):
-        response = requests.get(font_url)
-        response.raise_for_status()
-        with open(local_path, "wb") as f:
-            f.write(response.content)
+        try:
+            response = requests.get(font_url)
+            response.raise_for_status()
+            with open(local_path, "wb") as f:
+                f.write(response.content)
+        except Exception as e:
+            st.error(f"Failed to download font file: {e}")
+            raise e
+
 download_font(font_url, local_font_path)
 
-# Word limit based on duration
+# Calculate maximum words for the selected duration
 def max_words_for_duration(duration_seconds):
-    wpm = 150  # Words per minute
+    wpm = 150  # Average words per minute
     return int((duration_seconds / 60) * wpm)
 
-# Scrape images and text from a URL
-# Download and process image
+# Download and process an image
 def download_image(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-
-        # Convert unsupported image modes to RGB
-        if img.mode not in ["RGB", "RGBA"]:
+        
+        # Convert unsupported modes (e.g., P, RGBA) to RGB
+        if img.mode != "RGB":
             img = img.convert("RGB")
 
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
@@ -72,14 +79,10 @@ def download_image(url):
         st.warning(f"Failed to download or process image: {url}. Error: {e}")
         return None
 
-# Filter valid image formats and URLs
+# Filter valid images from scraped URLs
 def filter_valid_images(image_urls, max_images=5):
     valid_images = []
     for url in image_urls[:max_images]:
-        # Skip unsupported formats (e.g., SVG)
-        if any(url.lower().endswith(ext) for ext in ["svg", "webp", "bmp"]):
-            st.warning(f"Skipping unsupported image format: {url}")
-            continue
         try:
             image_path = download_image(url)
             if image_path:
@@ -112,7 +115,7 @@ def summarize_content(text):
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Summarize the following content into key points."},
+                {"role": "system", "content": "Summarize the following content into meaningful insights."},
                 {"role": "user", "content": text}
             ]
         )
@@ -121,14 +124,14 @@ def summarize_content(text):
         st.warning(f"Error summarizing content: {e}")
         return ""
 
-# Generate script using OpenAI
-def generate_script(summary, max_words):
+# Generate podcast script with a word limit
+def generate_script(enriched_text, max_words):
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words."},
-                {"role": "user", "content": summary}
+                {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words in total."},
+                {"role": "user", "content": enriched_text}
             ]
         )
         return json.loads(response.choices[0].message.content.strip())
@@ -136,7 +139,7 @@ def generate_script(summary, max_words):
         st.error(f"Error generating script: {e}")
         return []
 
-# Synthesize speech with ElevenLabs
+# Synthesize speech using ElevenLabs
 def synthesize_cloned_voice(text, speaker):
     try:
         audio_generator = elevenlabs_client.generate(
@@ -200,7 +203,7 @@ def create_video(images, script, audio_files, duration_seconds):
 
     if clips:
         video_file = "final_video.mp4"
-        final_video = concatenate_videoclips(clips)
+        final_video = concatenate_videoclips(clips, method="compose")
         final_video.write_videofile(video_file, codec="libx264", fps=24)
         return video_file
     else:
