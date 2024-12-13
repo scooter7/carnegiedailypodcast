@@ -210,28 +210,39 @@ def create_video_with_audio(images, script, audio_segments, duration_seconds):
 
     try:
         for image, part, audio in zip(images, script, audio_segments):
+            # Calculate segment duration based on audio length
             segment_duration = len(audio) / 1000  # Convert audio length to seconds
-            output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
-            temp_files.append(output_path)
-            if add_text_overlay(image, part["text"], output_path):
-                video_clip = ImageClip(output_path).set_duration(segment_duration)
 
-                # Export audio to a temporary file and pass its name to AudioFileClip
-                temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-                temp_files.append(temp_audio_file)
-                audio.export(temp_audio_file, format="mp3")
-                audio_clip = AudioFileClip(temp_audio_file)
-                video_clip = video_clip.set_audio(audio_clip)
-                clips.append(video_clip)
+            # Add text overlay to the image
+            output_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
+            temp_files.append(output_image_path)
+            if not add_text_overlay(image, part["text"], output_image_path):
+                st.error("Failed to add text overlay.")
+                continue
+
+            # Create a video clip from the image with the text overlay
+            video_clip = ImageClip(output_image_path).set_duration(segment_duration)
+
+            # Export the audio segment to a temporary file
+            temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+            temp_files.append(temp_audio_file)
+            audio.export(temp_audio_file, format="mp3")
+            audio_clip = AudioFileClip(temp_audio_file)
+
+            # Combine the video clip with the audio
+            video_clip = video_clip.set_audio(audio_clip)
+            clips.append(video_clip)
 
         if not clips:
             st.error("No video clips could be created.")
             return None
 
+        # Concatenate all the clips to create the final video
         final_video = concatenate_videoclips(clips, method="compose")
         video_file = "video_with_audio.mp4"
         final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
         return video_file
+
     finally:
         # Cleanup temporary files
         for temp_file in temp_files:
