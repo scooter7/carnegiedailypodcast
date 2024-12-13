@@ -198,7 +198,14 @@ def create_video(images, script, duration_seconds):
     final_video.write_videofile(video_file, codec="libx264", fps=24)
     return video_file
 
-# Main Streamlit App Logic
+# Main Streamlit App Interface
+st.title("CX College Profile Video & Podcast Creator")
+st.write("Enter a CX Profile URL to generate a podcast and video short.")
+
+# Input fields for the URL and duration selection
+parent_url = st.text_input("Enter the URL of the page:")
+duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
+
 if st.button("Generate Content"):
     if parent_url.strip():
         st.write("Scraping content from the URL...")
