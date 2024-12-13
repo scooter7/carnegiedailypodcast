@@ -54,7 +54,7 @@ def scrape_images_and_text(url):
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize the following content into meaningful insights."},
@@ -69,7 +69,7 @@ def summarize_content(text):
 # Generate podcast script
 def generate_script(enriched_text, duration_seconds):
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": f"{system_prompt} The script should fit within {duration_seconds} seconds."},
