@@ -104,7 +104,11 @@ def create_video(images, script, duration_seconds):
     for image, part in zip(images, script):
         output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
         if add_text_overlay(image, part["text"], output_path):
-            clips.append(ImageClip(output_path).set_duration(segment_duration))
+            img_clip = ImageClip(output_path).set_duration(segment_duration)
+            clips.append(img_clip)
+        else:
+            st.warning(f"Failed to process image or text for: {part['text']}")
+
     if clips:
         video_file = "video_short.mp4"
         final_video = concatenate_videoclips(clips, method="compose")
