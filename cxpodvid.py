@@ -268,12 +268,6 @@ def create_video_with_audio(images, script, audio_segments):
             for temp_file in temp_files:
                 if os.path.exists(temp_file):
                     os.remove(temp_file)
-                
-# After generating overlays in create_video_with_audio
-st.write("Preview images with text overlay:")
-for overlay_path in temp_files:
-    if overlay_path.endswith(".jpg"):
-        st.image(overlay_path, caption=f"Overlay: {overlay_path}")
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
@@ -309,7 +303,7 @@ if st.button("Generate Content"):
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
 
-                            # Preview overlayed images
+                            # Preview overlayed images after video is created
                             st.write("Preview images with text overlay:")
                             for overlay_path in temp_files:
                                 if overlay_path.endswith(".jpg"):
