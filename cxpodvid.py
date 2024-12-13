@@ -65,10 +65,11 @@ def download_image(url):
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
 
-        # Handle RGBA images by converting them to RGB
-        if img.mode == "RGBA":
+        # Ensure image is in RGB format
+        if img.mode != "RGB":
             img = img.convert("RGB")
 
+        # Save image locally
         temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg")
         img.save(temp_img.name, format="JPEG")
         logging.info(f"Image downloaded and saved: {temp_img.name}, size: {img.size}")
@@ -191,25 +192,24 @@ def add_text_overlay(image_path, text, output_path, font_path):
         text_height = text_bbox[3] - text_bbox[1]
 
         # Position text
-        x_start = max((img.width - text_width) // 2, 10)
-        y_start = min(img.height - text_height - 30, img.height - 50)
+        x_start = (img.width - text_width) // 2
+        y_start = img.height - text_height - 20
 
-        # Draw background and overlay
-        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        draw_bg = ImageDraw.Draw(background)
-        draw_bg.rectangle(
+        # Draw semi-transparent background
+        overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        draw_overlay = ImageDraw.Draw(overlay)
+        draw_overlay.rectangle(
             [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
             fill=(0, 0, 0, 180)
         )
-        img = Image.alpha_composite(img, background)
+        img = Image.alpha_composite(img, overlay)
+
+        # Add text
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
-        # Save and log
+        # Save image
         img.convert("RGB").save(output_path, "JPEG")
-        logging.info(f"Overlay image saved: {output_path}")
-
-        # Preview overlayed image
-        st.image(output_path, caption="Overlayed Image")
+        logging.info(f"Text overlay added to image: {output_path}")
         return output_path
     except Exception as e:
         logging.error(f"Error in add_text_overlay: {e}")
@@ -221,33 +221,29 @@ def create_video_with_audio(images, script, audio_segments):
         return None, []
 
     clips = []
-    temp_files = []  # Track temporary files
+    temp_files = []
 
     try:
         for idx, (image, part, audio) in enumerate(zip(images, script, audio_segments)):
             logging.info(f"Processing image {idx + 1}/{len(images)} with text overlay...")
 
-            # Add text overlay to the image
+            # Add text overlay to image
             temp_image_path = tempfile.NamedTemporaryFile(delete=False, suffix=".jpg").name
             text_overlay_path = add_text_overlay(image, part["text"], temp_image_path, local_font_path)
             if not text_overlay_path:
                 continue
-            logging.info(f"Overlay image saved: {text_overlay_path}")
             temp_files.append(text_overlay_path)
 
-            # Create video clip
+            # Create audio file
             audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
             audio.export(audio_path, format="mp3")
             temp_files.append(audio_path)
 
+            # Create video clip
             audio_clip = AudioFileClip(audio_path)
-            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration)
-            image_clip = image_clip.set_audio(audio_clip).set_fps(24)
-
-            logging.info(f"Created video clip for image {idx + 1}")
+            image_clip = ImageClip(text_overlay_path, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
             clips.append(image_clip)
 
-        # Concatenate video clips
         if clips:
             final_video = concatenate_videoclips(clips, method="compose")
             video_file_path = "final_video.mp4"
@@ -258,11 +254,10 @@ def create_video_with_audio(images, script, audio_segments):
             st.error("No video clips were created.")
             return None, temp_files
     finally:
-        # Cleanup temporary files in case of failure
-        if not clips:  # Clean up only if no successful clips
-            for temp_file in temp_files:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
+        # Cleanup temporary files
+        for temp_file in temp_files:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
