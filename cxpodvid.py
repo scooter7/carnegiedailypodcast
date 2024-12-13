@@ -222,10 +222,10 @@ def add_text_overlay(image_path, text, output_path, font_path):
 def create_video_with_audio(images, script, audio_segments):
     if not images or not script or not audio_segments:
         st.error("No valid images, script, or audio segments provided. Cannot create video.")
-        return None
+        return None, []
 
     clips = []
-    temp_files = []
+    temp_files = []  # Track temporary files
 
     try:
         for idx, (image, part, audio) in enumerate(zip(images, script, audio_segments)):
@@ -258,15 +258,16 @@ def create_video_with_audio(images, script, audio_segments):
             video_file_path = "final_video.mp4"
             final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
             logging.info(f"Video successfully created: {video_file_path}")
-            return video_file_path
+            return video_file_path, temp_files
         else:
             st.error("No video clips were created.")
-            return None
+            return None, temp_files
     finally:
-        # Cleanup temporary files
-        for temp_file in temp_files:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        # Cleanup temporary files in case of failure
+        if not clips:  # Clean up only if no successful clips
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    os.remove(temp_file)
                 
 # After generating overlays in create_video_with_audio
 st.write("Preview images with text overlay:")
@@ -301,12 +302,20 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        # Fix function call: Removed `duration`
-                        video_file = create_video_with_audio(images, conversation_script, audio_segments)
+                        # Generate video and retrieve temp files
+                        video_file, temp_files = create_video_with_audio(images, conversation_script, audio_segments)
                         if video_file:
                             st.success("Video created successfully!")
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
+
+                            # Preview overlayed images
+                            st.write("Preview images with text overlay:")
+                            for overlay_path in temp_files:
+                                if overlay_path.endswith(".jpg"):
+                                    st.image(overlay_path, caption=f"Overlay: {overlay_path}")
+                        else:
+                            st.error("Failed to create the video.")
 
                     else:
                         st.error("Failed to synthesize audio for the script.")
@@ -316,4 +325,3 @@ if st.button("Generate Content"):
                 st.error("Failed to summarize content.")
         else:
             st.error("Failed to scrape content.")
-
