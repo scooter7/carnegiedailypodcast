@@ -179,24 +179,24 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        # Wrap the text to fit within the image width
-        max_text_width = img.width - 40  # Allow for 20px padding on each side
-        wrapped_text = ""
-        for line in text.split("\n"):
-            line_width = int(max_text_width / font.getbbox("A")[2])  # Approximate max chars per line
-            wrapped_lines = textwrap.wrap(line, width=line_width)
-            wrapped_text += "\n".join(wrapped_lines) + "\n"
+        # Calculate the width for wrapping the text
+        max_text_width = img.width - 40  # Allow for padding
+        wrapped_text = "\n".join(
+            textwrap.fill(line, width=int(max_text_width / font.getbbox("A")[2]))
+            for line in text.split("\n")
+        )
 
-        # Calculate total height of the text
-        text_height = sum(font.getbbox(line)[3] - font.getbbox(line)[1] for line in wrapped_text.split("\n")) + 20
+        # Calculate the height of the text
+        text_lines = wrapped_text.split("\n")
+        text_height = sum(font.getbbox(line)[3] - font.getbbox(line)[1] for line in text_lines) + 20
 
         # Define the black textbox dimensions
-        box_height = text_height + 20  # Add padding for the box
+        box_height = text_height + 20
         y_start = img.height - box_height
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
 
-        # Draw the black rectangle across the entire bottom of the image
+        # Draw the black rectangle across the bottom of the image
         draw_overlay.rectangle(
             [(0, y_start), (img.width, img.height)],
             fill=(0, 0, 0, 180)  # Semi-transparent black
@@ -205,13 +205,13 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         # Combine the overlay with the image
         img = Image.alpha_composite(img, overlay)
 
-        # Draw the white text, centered horizontally
-        current_y = y_start + 10  # Start drawing text with padding
-        for line in wrapped_text.split("\n"):
+        # Draw the white text on the black box
+        current_y = y_start + 10  # Padding from the top of the box
+        for line in text_lines:
             text_width = font.getbbox(line)[2]
             x_start = (img.width - text_width) // 2
             draw.text((x_start, current_y), line, font=font, fill="white")
-            current_y += font.getbbox(line)[3] - font.getbbox(line)[1]  # Move to the next line
+            current_y += font.getbbox(line)[3] - font.getbbox(line)[1]
 
         return np.array(img.convert("RGB"))
     except Exception as e:
@@ -222,18 +222,31 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 def create_video_with_audio(images, script, audio_segments):
     clips = []
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
+        # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
+            logging.error(f"Failed to create overlay for image: {image_url}")
             continue
 
+        # Save the overlay image temporarily for MoviePy
+        temp_img_path = f"temp_image_{idx}.png"
+        Image.fromarray(overlay_image).save(temp_img_path)
+
+        # Save the audio temporarily for MoviePy
         audio_path = f"audio_{idx}.mp3"
         audio.export(audio_path, format="mp3")
 
+        # Create MoviePy clips
         audio_clip = AudioFileClip(audio_path)
-        image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+        image_clip = (
+            ImageClip(temp_img_path, duration=audio_clip.duration)
+            .set_audio(audio_clip)
+            .set_fps(24)
+        )
         clips.append(image_clip)
 
     if clips:
+        # Concatenate all clips into the final video
         final_video = concatenate_videoclips(clips, method="compose")
         video_file_path = "final_video.mp4"
         final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
