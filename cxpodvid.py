@@ -168,30 +168,51 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
+# Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
     try:
+        # Load the image
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
+        # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
-        wrapped_text = textwrap.fill(text, width=40)
+
+        # Wrap the text to fit the width of the image
+        max_text_width = img.width - 40  # Allow for 20px padding on each side
+        wrapped_text = ""
+        for line in text.split("\n"):
+            wrapped_lines = textwrap.wrap(line, width=int(max_text_width / font.getsize("A")[0]))
+            wrapped_text += "\n".join(wrapped_lines) + "\n"
+
+        # Calculate text height
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 20
-
+        # Define the black textbox dimensions
+        box_height = text_height + 40  # Add padding for the box
+        y_start = img.height - box_height
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
+
+        # Draw the black rectangle across the entire bottom of the image
         draw_overlay.rectangle(
-            [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 180)
+            [(0, y_start), (img.width, img.height)],
+            fill=(0, 0, 0, 180)  # Semi-transparent black
         )
+
+        # Combine the overlay with the image
         img = Image.alpha_composite(img, overlay)
-        draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
+
+        # Draw the white text, centered horizontally
+        current_y = y_start + 20  # Start drawing text with some padding
+        for line in wrapped_text.split("\n"):
+            text_width, _ = draw.textsize(line, font=font)
+            x_start = (img.width - text_width) // 2
+            draw.text((x_start, current_y), line, font=font, fill="white")
+            current_y += font.getsize(line)[1]  # Move to the next line
 
         return np.array(img.convert("RGB"))
     except Exception as e:
