@@ -1,3 +1,4 @@
+
 # Standard Python and library imports
 import os
 import requests
@@ -168,51 +169,82 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
+    """Add captions to an image with proper text wrapping and a semi-transparent background."""
     try:
+        # Load the image
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
+        # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
-        wrapped_text = textwrap.fill(text, width=40)
+
+        # Calculate maximum text width (pixels) for wrapping
+        max_text_width = img.width - 40  # Padding of 20px on each side
+        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
+
+        # Calculate text size and position
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
+        total_text_height = text_height + 20  # Add padding
 
-        x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 20
+        # Position the text at the bottom of the image
+        x_start = 20  # 20px padding from left
+        y_start = img.height - total_text_height - 20  # 20px padding from bottom
 
-        overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        draw_overlay = ImageDraw.Draw(overlay)
-        draw_overlay.rectangle(
-            [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 180)
+        # Create semi-transparent rectangle for text background
+        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        background_draw = ImageDraw.Draw(background)
+        background_draw.rectangle(
+            [(0, img.height - total_text_height - 40), (img.width, img.height)],
+            fill=(0, 0, 0, 128)  # Semi-transparent black
         )
-        img = Image.alpha_composite(img, overlay)
-        draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
+        # Combine overlay and original image
+        img = Image.alpha_composite(img, background)
+
+        # Draw the text on the image
+        draw = ImageDraw.Draw(img)
+        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
+
+        # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
+
     except Exception as e:
-        logging.error(f"Error adding text overlay: {e}")
+        logging.error(f"Failed to add text overlay: {e}")
         return None
 
 # Create video with audio
 def create_video_with_audio(images, script, audio_segments):
     clips = []
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
+        # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
+            logging.error(f"Failed to create overlay for image: {image_url}")
             continue
 
+        # Save the overlay image temporarily for MoviePy
+        temp_img_path = f"temp_image_{idx}.png"
+        Image.fromarray(overlay_image).save(temp_img_path)
+
+        # Save the audio temporarily for MoviePy
         audio_path = f"audio_{idx}.mp3"
         audio.export(audio_path, format="mp3")
 
+        # Create MoviePy clips
         audio_clip = AudioFileClip(audio_path)
-        image_clip = ImageClip(overlay_image, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
+        image_clip = (
+            ImageClip(temp_img_path, duration=audio_clip.duration)
+            .set_audio(audio_clip)
+            .set_fps(24)
+        )
         clips.append(image_clip)
 
     if clips:
+        # Concatenate all clips into the final video
         final_video = concatenate_videoclips(clips, method="compose")
         video_file_path = "final_video.mp4"
         final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
