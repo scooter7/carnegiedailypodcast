@@ -163,7 +163,7 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
-    """Add captions to an image with proper text wrapping and a semi-transparent background."""
+    """Add captions to an image with proper text wrapping and a visible semi-transparent background."""
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
@@ -174,33 +174,41 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 40  # Padding of 20px on each side
-        wrapped_text = textwrap.fill(text, width=int(max_text_width / (font.size / 2.5)))
+        # Wrap text to fit within the image width
+        max_width = img.width - 40  # Padding of 20px on each side
+        wrapped_text = textwrap.fill(text, width=int(max_width / (font.size * 0.6)))
 
-        # Calculate text size and position
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        total_text_height = text_height + 20  # Add padding
+        # Calculate text size
+        text_size = draw.textsize(wrapped_text, font=font)
+        text_width, text_height = text_size
+        padding = 20
+        total_text_height = text_height + padding
 
-        # Position the text at the bottom of the image
-        x_start = (img.width - text_width) // 2  # Center text horizontally
-        y_start = img.height - total_text_height - 20  # 20px padding from bottom
+        # Calculate background height and text position
+        background_height = total_text_height + padding
+        x_start = padding  # Align to the left with padding
+        y_start = img.height - background_height  # Align to the bottom with padding
 
-        # Create semi-transparent rectangle for text background
-        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        # Create a semi-transparent overlay for the text background
+        overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
-            [(0, img.height - total_text_height - 40), (img.width, img.height)],
+            [(0, y_start), (img.width, img.height)], 
             fill=(0, 0, 0, 128)  # Semi-transparent black
         )
 
-        # Combine overlay and original image
+        # Combine the overlay and the image
         img = Image.alpha_composite(img, overlay)
 
-        # Draw the text on the image
-        draw.text((x_start, y_start), wrapped_text, font=font, fill="white", align="center")
+        # Draw the text on top of the overlay
+        draw = ImageDraw.Draw(img)
+        draw.multiline_text(
+            (x_start, y_start + padding // 2),
+            wrapped_text,
+            font=font,
+            fill="white",
+            align="left"
+        )
 
         # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
