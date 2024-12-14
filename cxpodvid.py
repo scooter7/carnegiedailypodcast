@@ -1,4 +1,3 @@
-
 # Standard Python and library imports
 import os
 import requests
@@ -10,7 +9,7 @@ from pydub import AudioSegment
 from elevenlabs.client import ElevenLabs
 import tempfile
 import json
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, Transfx
 from urllib.parse import urljoin
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -39,7 +38,7 @@ speaker_voice_map = {
 # System prompt for script generation
 system_prompt = """
 You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
-Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make jusgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
+Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make judgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
 The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
@@ -58,11 +57,6 @@ def download_font(font_url, local_path):
         with open(local_path, "wb") as f:
             f.write(response.content)
 download_font(font_url, local_font_path)
-
-# Calculate word limit based on duration
-def max_words_for_duration(duration_seconds):
-    wpm = 150  # Words per minute
-    return int((duration_seconds / 60) * wpm)
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, min_width=400, min_height=300):
@@ -85,7 +79,7 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
             valid_images.append(url)
         except Exception as e:
             logging.warning(f"Error processing image: {url}, Error: {e}")
-    logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
+    logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)})")
     return valid_images
 
 # Scrape images and text from a URL
@@ -169,7 +163,7 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
-    """Add captions to an image with proper text wrapping and a semi-transparent background."""
+    """Add captions to an image spanning full width with proper padding."""
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
@@ -180,57 +174,49 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
         
-        # Wrap text to completely fill the width
-        words = text.split()
-        lines = []
-        current_line = words[0]
-        
-        for word in words[1:]:
-            # Test if adding the word would exceed the image width
-            test_line = current_line + " " + word
-            test_width = draw.textbbox((0, 0), test_line, font=font)[2]
-            
-            if test_width < img.width - 40:  # Leave some padding
-                current_line = test_line
-            else:
-                lines.append(current_line)
-                current_line = word
-        
-        lines.append(current_line)
-        wrapped_text = "\n".join(lines)
-        
-        # Calculate text size
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        
-        # Create semi-transparent rectangle for full-width background
-        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        background_draw = ImageDraw.Draw(background)
-        background_draw.rectangle(
-            [(0, img.height - text_height - 60), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black spanning full width
+        # Wrap text to fit full width
+        wrapped_text = textwrap.fill(text, width=50)
+
+        # Calculate text size and background height
+        text_size = draw.multiline_textsize(wrapped_text, font=font)
+        background_height = text_size[1] + 20
+
+        # Add semi-transparent rectangle
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw_overlay = ImageDraw.Draw(overlay)
+        draw_overlay.rectangle(
+            [(0, img.height - background_height), (img.width, img.height)],
+            fill=(0, 0, 0, 128)
         )
-        
-        # Combine overlay and original image
-        img = Image.alpha_composite(img, background)
-        
-        # Draw text centered horizontally
-        draw = ImageDraw.Draw(img)
-        x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 40
-        draw.multiline_text((20, y_start), wrapped_text, font=font, fill="white", align="center")
-        
-        # Return the final image as a NumPy array
+        img = Image.alpha_composite(img, overlay)
+
+        # Add text on top
+        text_x = (img.width - text_size[0]) // 2
+        text_y = img.height - background_height + 10
+        draw.multiline_text((text_x, text_y), wrapped_text, font=font, fill="white", align="center")
+
+        # Return image as NumPy array
         return np.array(img.convert("RGB"))
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
         return None
-        
-# Create video with audio
-def create_video_with_audio(images, script, audio_segments):
+
+# Ensure video duration matches audio duration
+def match_video_duration(images, total_duration):
+    num_images = len(images)
+    if num_images == 0:
+        return []
+
+    per_image_duration = total_duration / num_images
+    durations = [per_image_duration] * num_images
+    return durations
+
+# Create video with audio and fade transitions
+def create_video_with_audio(images, script, audio_segments, total_duration):
+    durations = match_video_duration(images, total_duration)
     clips = []
-    for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
+
+    for idx, (image_url, part, audio, duration) in enumerate(zip(images, script, audio_segments, durations)):
         # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
@@ -248,15 +234,17 @@ def create_video_with_audio(images, script, audio_segments):
         # Create MoviePy clips
         audio_clip = AudioFileClip(audio_path)
         image_clip = (
-            ImageClip(temp_img_path, duration=audio_clip.duration)
+            ImageClip(temp_img_path, duration=duration)
             .set_audio(audio_clip)
+            .fadein(0.5)
+            .fadeout(0.5)
             .set_fps(24)
         )
         clips.append(image_clip)
 
     if clips:
         # Concatenate all clips into the final video
-        final_video = concatenate_videoclips(clips, method="compose")
+        final_video = concatenate_videoclips(clips, method="compose", padding=-1)
         video_file_path = "final_video.mp4"
         final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
         return video_file_path
@@ -266,7 +254,7 @@ def create_video_with_audio(images, script, audio_segments):
 st.title("CX Podcast and Video Generator")
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
 
-duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
+duration = st.slider("Select Duration (seconds)", min_value=15, max_value=120, value=60, step=15)
 
 if st.button("Generate Content"):
     if not url_input.strip():
@@ -298,7 +286,7 @@ if st.button("Generate Content"):
 
                         st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments)
+                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, duration)
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
