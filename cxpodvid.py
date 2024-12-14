@@ -1,3 +1,4 @@
+
 # Standard Python and library imports
 import os
 import requests
@@ -37,8 +38,12 @@ speaker_voice_map = {
 
 # System prompt for script generation
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based, conversational dialogue between Ali and Lisa. 
-Include relevant statistics and insights. Format the response strictly as a JSON array of objects with 'speaker' and 'text' keys.
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
+Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make jusgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
+The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.
+
+Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
+Only return JSON without additional text, explanations, or formatting.
 """
 
 # Font file for text overlay
@@ -169,35 +174,23 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
-        # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
-        
-        # Wrap text and calculate dimensions
         wrapped_text = textwrap.fill(text, width=40)
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
-        # Calculate textbox and text position
-        padding = 20
         x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - padding
+        y_start = img.height - text_height - 20
 
-        # Create overlay for textbox background
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
-            [
-                (x_start - padding, y_start - padding),
-                (x_start + text_width + padding, y_start + text_height + padding),
-            ],
-            fill=(0, 0, 0, 180)  # Semi-transparent black background
+            [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
+            fill=(0, 0, 0, 180)
         )
-
-        # Combine image with overlay and add text
         img = Image.alpha_composite(img, overlay)
-        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
         return np.array(img.convert("RGB"))
