@@ -180,31 +180,32 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
         
-        # Calculate wrapped text
-        wrapped_text = textwrap.fill(text, width=40)  # You can adjust this width
+        # Calculate maximum text width (full image width with some padding)
+        max_text_width = img.width - 40  # Small padding
+        
+        # Wrap text to fit the full width
+        wrapped_text = textwrap.fill(text, width=int(img.width / 15))  # Dynamically adjust width
         
         # Calculate text size
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         
-        # Position calculation
-        x_start = (img.width - text_width) // 2  # Center horizontally
-        y_start = img.height - text_height - 40  # Position near bottom
-        
-        # Create semi-transparent rectangle for text background
+        # Create semi-transparent rectangle for full-width background
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         background_draw = ImageDraw.Draw(background)
         background_draw.rectangle(
             [(0, img.height - text_height - 60), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black
+            fill=(0, 0, 0, 128)  # Semi-transparent black spanning full width
         )
         
         # Combine overlay and original image
         img = Image.alpha_composite(img, background)
         
-        # Draw the text on the image
+        # Draw text centered horizontally
         draw = ImageDraw.Draw(img)
+        x_start = (img.width - text_width) // 2
+        y_start = img.height - text_height - 40
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
         
         # Return the final image as a NumPy array
@@ -212,7 +213,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
         return None
-
+        
 # Create video with audio
 def create_video_with_audio(images, script, audio_segments):
     clips = []
