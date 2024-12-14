@@ -169,17 +169,19 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
-        
+
         # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
-        
+
         # Wrap text to fit full width
         wrapped_text = textwrap.fill(text, width=50)
 
-        # Calculate text size and background height
-        text_size = draw.multiline_textsize(wrapped_text, font=font)
-        background_height = text_size[1] + 20
+        # Calculate text size using textbbox
+        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+        background_height = text_height + 20
 
         # Add semi-transparent rectangle
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -191,9 +193,9 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.alpha_composite(img, overlay)
 
         # Add text on top
-        text_x = (img.width - text_size[0]) // 2
+        text_x = (img.width - text_width) // 2
         text_y = img.height - background_height + 10
-        draw.multiline_text((text_x, text_y), wrapped_text, font=font, fill="white", align="center")
+        draw.text((text_x, text_y), wrapped_text, font=font, fill="white", align="center")
 
         # Return image as NumPy array
         return np.array(img.convert("RGB"))
