@@ -220,20 +220,8 @@ from moviepy.video.fx.all import fadein, fadeout
 
 def create_video_with_audio(images, script, audio_segments):
     clips = []
-    audio_duration = sum(audio.duration_seconds for audio in audio_segments)
-    total_audio = AudioSegment.empty()
 
-    for audio in audio_segments:
-        total_audio += audio
-
-    combined_audio_path = "combined_audio.mp3"
-    total_audio.export(combined_audio_path, format="mp3")
-    audio_clip = AudioFileClip(combined_audio_path)
-
-    # Calculate image duration to match audio
-    image_duration = audio_clip.duration / max(len(images), 1)
-
-    for idx, (image_url, part) in enumerate(zip(images, script)):
+    for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
         # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
@@ -244,22 +232,37 @@ def create_video_with_audio(images, script, audio_segments):
         temp_img_path = f"temp_image_{idx}.png"
         Image.fromarray(overlay_image).save(temp_img_path)
 
-        # Create MoviePy clip
-        image_clip = ImageClip(temp_img_path, duration=image_duration).set_fps(24)
-        image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)  # Add fade transitions
+        # Save the audio temporarily for MoviePy
+        temp_audio_path = f"audio_{idx}.mp3"
+        audio.export(temp_audio_path, format="mp3")
+
+        # Create MoviePy audio clip
+        audio_clip = AudioFileClip(temp_audio_path)
+
+        # Create MoviePy image clip with the same duration as the audio segment
+        image_clip = (
+            ImageClip(temp_img_path, duration=audio_clip.duration)
+            .set_audio(audio_clip)
+            .set_fps(24)
+        )
+
+        # Add fade-in and fade-out transitions
+        image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
+
         clips.append(image_clip)
 
-    # Ensure at least one clip exists to avoid error
+    # Ensure there are valid clips
     if not clips:
         logging.error("No valid video clips could be created.")
         return None
 
-    # Concatenate video clips
-    video = concatenate_videoclips(clips, method="compose").set_audio(audio_clip)
+    # Concatenate video clips into the final video
+    final_video = concatenate_videoclips(clips, method="compose")
 
-    # Write final video
+    # Write final video to file
     final_video_path = "final_video.mp4"
-    video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
+    final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
+
     return final_video_path
 
 # Streamlit app interface
