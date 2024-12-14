@@ -161,6 +161,12 @@ def synthesize_cloned_voice(text, speaker):
         logging.error(f"Error synthesizing speech for {speaker}: {e}")
         return None
 
+# Calculate word limit based on duration
+def max_words_for_duration(duration_seconds):
+    """Calculate the maximum number of words based on the duration of the video."""
+    wpm = 150  # Average words per minute for speech
+    return int((duration_seconds / 60) * wpm)
+    
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
     """Add captions to an image with proper text wrapping and a semi-transparent background."""
