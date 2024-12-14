@@ -175,7 +175,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         font = ImageFont.truetype(font_path, size=30)
 
         # Wrap text to fit within the image width
-        max_width = img.width - 10  # Padding of 5px on each side
+        max_width = img.width - 40  # Padding of 20px on each side
         lines = []
         words = text.split()
         line = words[0]
@@ -221,15 +221,36 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Ensure video duration matches audio duration
-def match_video_duration(images, total_duration):
-    num_images = len(images)
-    if num_images == 0:
-        return []
 
-    per_image_duration = total_duration / num_images
-    durations = [per_image_duration] * num_images
-    return durations
+# Generate audio sequentially for all speakers
+def synthesize_speaker_audio(script, speaker):
+    """Concatenate all text for a speaker and synthesize a single audio file."""
+    try:
+        speaker_text = "\n".join([part["text"] for part in script if part["speaker"] == speaker])
+        audio_generator = elevenlabs_client.generate(
+            text=speaker_text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_multilingual_v2"
+        )
+        audio_content = b"".join(audio_generator)
+        temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        with open(temp_audio_file.name, "wb") as f:
+            f.write(audio_content)
+        return AudioSegment.from_file(temp_audio_file.name)
+    except Exception as e:
+        logging.error(f"Error synthesizing audio for {speaker}: {e}")
+        return None
+
+
+def generate_audio(script):
+    """Generate audio for all speakers sequentially to avoid overlaps."""
+    audio_segments = []
+    for speaker in speaker_voice_map.keys():
+        speaker_audio = synthesize_speaker_audio(script, speaker)
+        if speaker_audio:
+            audio_segments.append(speaker_audio)
+    return sum(audio_segments, AudioSegment.empty())
+
 
 # Create video with audio and fade transitions
 def create_video_with_audio(images, script, audio_segments, total_duration):
@@ -260,21 +281,16 @@ def create_video_with_audio(images, script, audio_segments, total_duration):
             .fadeout(0.5)
             .set_fps(24)
         )
-
         clips.append(image_clip)
 
     if clips:
         # Concatenate all clips into the final video
-        final_video = concatenate_videoclips(clips, method="compose", padding=-1)
+        final_video = concatenate_videoclips(clips, method="compose")
         video_file_path = "final_video.mp4"
         final_video.write_videofile(video_file_path, codec="libx264", fps=24, audio_codec="aac")
         return video_file_path
     return None
 
-# Calculate word limit based on duration
-def max_words_for_duration(duration_seconds):
-    wpm = 150  # Average words per minute for speech
-    return int((duration_seconds / 60) * wpm)
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
@@ -295,11 +311,10 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
-                    audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
-                    audio_segments = [audio for audio in audio_segments if audio]
+                    # Generate non-overlapping audio for all speakers
+                    combined_audio = generate_audio(conversation_script)
 
-                    if audio_segments:
-                        combined_audio = sum(audio_segments, AudioSegment.empty())
+                    if combined_audio:
                         podcast_file = "podcast.mp3"
                         combined_audio.export(podcast_file, format="mp3")
                         st.audio(podcast_file)
@@ -312,7 +327,7 @@ if st.button("Generate Content"):
 
                         st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, duration)
+                        video_file = create_video_with_audio(filtered_images, conversation_script, [combined_audio] * len(filtered_images), duration)
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
