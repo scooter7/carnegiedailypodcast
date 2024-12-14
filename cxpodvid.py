@@ -168,7 +168,6 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-# Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
     try:
         # Load the image
@@ -180,19 +179,19 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        # Wrap the text to fit the width of the image
+        # Wrap the text to fit within the image width
         max_text_width = img.width - 40  # Allow for 20px padding on each side
         wrapped_text = ""
         for line in text.split("\n"):
-            wrapped_lines = textwrap.wrap(line, width=int(max_text_width / font.getsize("A")[0]))
+            line_width = int(max_text_width / font.getbbox("A")[2])  # Approximate max chars per line
+            wrapped_lines = textwrap.wrap(line, width=line_width)
             wrapped_text += "\n".join(wrapped_lines) + "\n"
 
-        # Calculate text height
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_height = text_bbox[3] - text_bbox[1]
+        # Calculate total height of the text
+        text_height = sum(font.getbbox(line)[3] - font.getbbox(line)[1] for line in wrapped_text.split("\n")) + 20
 
         # Define the black textbox dimensions
-        box_height = text_height + 40  # Add padding for the box
+        box_height = text_height + 20  # Add padding for the box
         y_start = img.height - box_height
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
@@ -207,12 +206,12 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.alpha_composite(img, overlay)
 
         # Draw the white text, centered horizontally
-        current_y = y_start + 20  # Start drawing text with some padding
+        current_y = y_start + 10  # Start drawing text with padding
         for line in wrapped_text.split("\n"):
-            text_width, _ = draw.textsize(line, font=font)
+            text_width = font.getbbox(line)[2]
             x_start = (img.width - text_width) // 2
             draw.text((x_start, current_y), line, font=font, fill="white")
-            current_y += font.getsize(line)[1]  # Move to the next line
+            current_y += font.getbbox(line)[3] - font.getbbox(line)[1]  # Move to the next line
 
         return np.array(img.convert("RGB"))
     except Exception as e:
