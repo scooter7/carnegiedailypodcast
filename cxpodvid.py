@@ -182,7 +182,8 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 
         # Break text into lines that fit within the max_width
         for word in words[1:]:
-            if font.getsize(line + " " + word)[0] <= max_width:
+            line_width = font.getbbox(line + " " + word)[2]  # Calculate line width
+            if line_width <= max_width:
                 line += " " + word
             else:
                 lines.append(line)
@@ -190,10 +191,11 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         lines.append(line)
 
         # Calculate text height
-        text_height = sum(font.getsize(line)[1] for line in lines) + 20  # Add padding
+        line_height = font.getbbox("Ay")[3]  # Get height of a single line
+        total_text_height = len(lines) * line_height + 20  # Add padding
 
-        # Calculate text background and position
-        y_start = img.height - text_height - 20  # 20px padding from the bottom
+        # Calculate background height and text position
+        y_start = img.height - total_text_height - 20  # 20px padding from the bottom
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
@@ -207,10 +209,10 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         # Draw the text on the image
         y_text = y_start + 10  # Padding inside the background
         for line in lines:
-            text_width, text_height = font.getsize(line)
+            text_width = font.getbbox(line)[2]
             x_text = (img.width - text_width) // 2  # Center text horizontally
             draw.text((x_text, y_text), line, font=font, fill="white")
-            y_text += text_height
+            y_text += line_height
 
         # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
