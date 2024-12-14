@@ -180,11 +180,24 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
         
-        # Calculate maximum text width (full image width with some padding)
-        max_text_width = img.width - 40  # Small padding
+        # Wrap text to completely fill the width
+        words = text.split()
+        lines = []
+        current_line = words[0]
         
-        # Wrap text to fit the full width
-        wrapped_text = textwrap.fill(text, width=int(img.width / 15))  # Dynamically adjust width
+        for word in words[1:]:
+            # Test if adding the word would exceed the image width
+            test_line = current_line + " " + word
+            test_width = draw.textbbox((0, 0), test_line, font=font)[2]
+            
+            if test_width < img.width - 40:  # Leave some padding
+                current_line = test_line
+            else:
+                lines.append(current_line)
+                current_line = word
+        
+        lines.append(current_line)
+        wrapped_text = "\n".join(lines)
         
         # Calculate text size
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
@@ -206,7 +219,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         x_start = (img.width - text_width) // 2
         y_start = img.height - text_height - 40
-        draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
+        draw.multiline_text((20, y_start), wrapped_text, font=font, fill="white", align="center")
         
         # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
