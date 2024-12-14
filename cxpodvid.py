@@ -251,6 +251,11 @@ def create_video_with_audio(images, script, audio_segments, total_duration):
         return video_file_path
     return None
 
+# Calculate word limit based on duration
+def max_words_for_duration(duration_seconds):
+    wpm = 150  # Average words per minute for speech
+    return int((duration_seconds / 60) * wpm)
+
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
