@@ -169,6 +169,7 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
+    """Add captions to an image with proper text wrapping and a semi-transparent background."""
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
@@ -179,43 +180,40 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        # Calculate the width for wrapping the text
-        max_text_width = img.width - 40  # Allow for padding
-        wrapped_text = "\n".join(
-            textwrap.fill(line, width=int(max_text_width / font.getbbox("A")[2]))
-            for line in text.split("\n")
+        # Calculate maximum text width (pixels) for wrapping
+        max_text_width = img.width - 40  # Padding of 20px on each side
+        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
+
+        # Calculate text size and position
+        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+        total_text_height = text_height + 20  # Add padding
+
+        # Position the text at the bottom of the image
+        x_start = 20  # 20px padding from left
+        y_start = img.height - total_text_height - 20  # 20px padding from bottom
+
+        # Create semi-transparent rectangle for text background
+        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
+        background_draw = ImageDraw.Draw(background)
+        background_draw.rectangle(
+            [(0, img.height - total_text_height - 40), (img.width, img.height)],
+            fill=(0, 0, 0, 128)  # Semi-transparent black
         )
 
-        # Calculate the height of the text
-        text_lines = wrapped_text.split("\n")
-        text_height = sum(font.getbbox(line)[3] - font.getbbox(line)[1] for line in text_lines) + 20
+        # Combine overlay and original image
+        img = Image.alpha_composite(img, background)
 
-        # Define the black textbox dimensions
-        box_height = text_height + 20
-        y_start = img.height - box_height
-        overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        draw_overlay = ImageDraw.Draw(overlay)
+        # Draw the text on the image
+        draw = ImageDraw.Draw(img)
+        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
 
-        # Draw the black rectangle across the bottom of the image
-        draw_overlay.rectangle(
-            [(0, y_start), (img.width, img.height)],
-            fill=(0, 0, 0, 180)  # Semi-transparent black
-        )
-
-        # Combine the overlay with the image
-        img = Image.alpha_composite(img, overlay)
-
-        # Draw the white text on the black box
-        current_y = y_start + 10  # Padding from the top of the box
-        for line in text_lines:
-            text_width = font.getbbox(line)[2]
-            x_start = (img.width - text_width) // 2
-            draw.text((x_start, current_y), line, font=font, fill="white")
-            current_y += font.getbbox(line)[3] - font.getbbox(line)[1]
-
+        # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
+
     except Exception as e:
-        logging.error(f"Error adding text overlay: {e}")
+        logging.error(f"Failed to add text overlay: {e}")
         return None
 
 # Create video with audio
