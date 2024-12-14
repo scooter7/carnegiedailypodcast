@@ -169,7 +169,7 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
-    """Add captions to an image with proper text wrapping and a semi-transparent background."""
+    """Add captions to an image with full-width text wrapping and a semi-transparent background."""
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
@@ -182,34 +182,37 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 
         # Calculate maximum text width (pixels) for wrapping
         max_text_width = img.width - 40  # Padding of 20px on each side
-        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
+        wrapped_text = textwrap.fill(text, width=int(max_text_width / font.getsize("A")[0]))  # Dynamic wrapping
 
         # Calculate text size and position
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        total_text_height = text_height + 20  # Add padding
+        text_lines = wrapped_text.split("\n")
+        text_heights = [font.getbbox(line)[3] - font.getbbox(line)[1] for line in text_lines]
+        total_text_height = sum(text_heights) + 20  # Add padding between lines
+        line_spacing = 10  # Extra spacing between lines
 
         # Position the text at the bottom of the image
-        x_start = 20  # 20px padding from left
-        y_start = img.height - total_text_height - 20  # 20px padding from bottom
+        y_start = img.height - total_text_height - 40  # 40px padding from bottom
+        x_padding = 20  # Horizontal padding for the text
 
         # Create semi-transparent rectangle for text background
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         background_draw = ImageDraw.Draw(background)
         background_draw.rectangle(
-            [(0, img.height - total_text_height - 40), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black
+            [(0, img.height - total_text_height - 60), (img.width, img.height)],
+            fill=(0, 0, 0, 180)  # Semi-transparent black
         )
 
         # Combine overlay and original image
         img = Image.alpha_composite(img, background)
 
-        # Draw the text on the image
-        draw = ImageDraw.Draw(img)
-        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
+        # Draw the text with adjusted line spacing and center alignment
+        current_y = y_start
+        for line in text_lines:
+            text_width = draw.textlength(line, font=font)  # Get precise width of the text line
+            x_start = (img.width - text_width) // 2  # Center the text horizontally
+            draw.text((x_start, current_y), line, font=font, fill="white")
+            current_y += text_heights[0] + line_spacing  # Move to the next line with spacing
 
-        # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
 
     except Exception as e:
