@@ -180,26 +180,24 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
         
-        # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 20  # Reduced padding
-        wrapped_text = textwrap.fill(text, width=int(img.width / 20))  # Dynamic width calculation
+        # Calculate wrapped text
+        wrapped_text = textwrap.fill(text, width=40)  # You can adjust this width
         
-        # Calculate text size and position
+        # Calculate text size
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        total_text_height = text_height + 20  # Add padding
         
-        # Position the text at the bottom of the image
-        x_start = (img.width - text_width) // 2  # Center the text horizontally
-        y_start = img.height - total_text_height - 20  # 20px padding from bottom
+        # Position calculation
+        x_start = (img.width - text_width) // 2  # Center horizontally
+        y_start = img.height - text_height - 40  # Position near bottom
         
         # Create semi-transparent rectangle for text background
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         background_draw = ImageDraw.Draw(background)
         background_draw.rectangle(
-            [(0, img.height - total_text_height - 40), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black spanning full width
+            [(0, img.height - text_height - 60), (img.width, img.height)],
+            fill=(0, 0, 0, 128)  # Semi-transparent black
         )
         
         # Combine overlay and original image
@@ -207,7 +205,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         
         # Draw the text on the image
         draw = ImageDraw.Draw(img)
-        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
+        draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
         
         # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
