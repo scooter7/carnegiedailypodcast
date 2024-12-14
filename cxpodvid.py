@@ -181,7 +181,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         font = ImageFont.truetype(font_path, size=30)
 
         # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 40  # Padding of 20px on each side
+        max_text_width = img.width - 10  # Padding of 5px on each side
         wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
 
         # Calculate text size and position
