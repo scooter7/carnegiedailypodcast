@@ -9,7 +9,7 @@ from pydub import AudioSegment
 from elevenlabs.client import ElevenLabs
 import tempfile
 import json
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, Transfx
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from urllib.parse import urljoin
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -240,6 +240,7 @@ def create_video_with_audio(images, script, audio_segments, total_duration):
             .fadeout(0.5)
             .set_fps(24)
         )
+
         clips.append(image_clip)
 
     if clips:
