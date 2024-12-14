@@ -103,7 +103,7 @@ def scrape_images_and_text(url):
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": "Summarize the following content into key points."},
@@ -118,7 +118,7 @@ def summarize_content(text):
 # Generate script using OpenAI
 def generate_script(enriched_text, max_words):
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words in total."},
@@ -166,7 +166,7 @@ def max_words_for_duration(duration_seconds):
     """Calculate the maximum number of words based on the duration of the video."""
     wpm = 150  # Average words per minute for speech
     return int((duration_seconds / 60) * wpm)
-    
+
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
     """Add captions to an image with proper text wrapping and a semi-transparent background."""
@@ -227,7 +227,6 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-
 # Generate audio sequentially for all speakers
 def synthesize_speaker_audio(script, speaker):
     """Concatenate all text for a speaker and synthesize a single audio file."""
@@ -247,7 +246,6 @@ def synthesize_speaker_audio(script, speaker):
         logging.error(f"Error synthesizing audio for {speaker}: {e}")
         return None
 
-
 def generate_audio(script):
     """Generate audio for all speakers sequentially to avoid overlaps."""
     audio_segments = []
@@ -257,9 +255,18 @@ def generate_audio(script):
             audio_segments.append(speaker_audio)
     return sum(audio_segments, AudioSegment.empty())
 
+# Ensure video duration matches audio duration
+def match_video_duration(images, total_duration):
+    """Distribute total duration evenly across all images."""
+    num_images = len(images)
+    if num_images == 0:
+        return []
+    per_image_duration = total_duration / num_images
+    return [per_image_duration] * num_images
 
 # Create video with audio and fade transitions
 def create_video_with_audio(images, script, audio_segments, total_duration):
+    """Create a video from images and audio, with fade transitions."""
     durations = match_video_duration(images, total_duration)
     clips = []
 
@@ -297,7 +304,6 @@ def create_video_with_audio(images, script, audio_segments, total_duration):
         return video_file_path
     return None
 
-
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
@@ -321,21 +327,35 @@ if st.button("Generate Content"):
                     combined_audio = generate_audio(conversation_script)
 
                     if combined_audio:
+                        # Export the combined audio to a podcast file
                         podcast_file = "podcast.mp3"
                         combined_audio.export(podcast_file, format="mp3")
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
+                        # Save and download the script as a text file
                         script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
                         script_file = "conversation_script.txt"
                         with open(script_file, "w") as f:
                             f.write(script_text)
-
                         st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
-                        video_file = create_video_with_audio(filtered_images, conversation_script, [combined_audio] * len(filtered_images), duration)
+                        # Create video with audio and text overlays
+                        video_file = create_video_with_audio(
+                            filtered_images, 
+                            conversation_script, 
+                            [combined_audio] * len(filtered_images), 
+                            duration
+                        )
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
                         else:
                             st.error("Failed to create video.")
+                else:
+                    st.error("Failed to generate the conversation script.")
+            else:
+                st.error("Failed to summarize the content.")
+        else:
+            st.error("Failed to scrape valid content from the provided URL.")
+
