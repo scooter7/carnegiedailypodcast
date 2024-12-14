@@ -175,43 +175,42 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
-
+        
         # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
-
+        
         # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 40  # Padding of 20px on each side
-        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
-
+        max_text_width = img.width - 20  # Reduced padding
+        wrapped_text = textwrap.fill(text, width=int(img.width / 20))  # Dynamic width calculation
+        
         # Calculate text size and position
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
         total_text_height = text_height + 20  # Add padding
-
+        
         # Position the text at the bottom of the image
-        x_start = 20  # 20px padding from left
+        x_start = (img.width - text_width) // 2  # Center the text horizontally
         y_start = img.height - total_text_height - 20  # 20px padding from bottom
-
+        
         # Create semi-transparent rectangle for text background
         background = Image.new("RGBA", img.size, (255, 255, 255, 0))
         background_draw = ImageDraw.Draw(background)
         background_draw.rectangle(
             [(0, img.height - total_text_height - 40), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black
+            fill=(0, 0, 0, 128)  # Semi-transparent black spanning full width
         )
-
+        
         # Combine overlay and original image
         img = Image.alpha_composite(img, background)
-
+        
         # Draw the text on the image
         draw = ImageDraw.Draw(img)
         draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
-
+        
         # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
-
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
         return None
