@@ -163,7 +163,7 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
-    """Add captions to an image spanning full width with proper padding."""
+    """Add captions to an image with proper text wrapping and a semi-transparent background."""
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
@@ -174,31 +174,37 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
 
-        # Wrap text to fit full width
-        wrapped_text = textwrap.fill(text, width=50)
+        # Calculate maximum text width (pixels) for wrapping
+        max_text_width = img.width - 40  # Padding of 20px on each side
+        wrapped_text = textwrap.fill(text, width=int(max_text_width / (font.size / 2.5)))
 
-        # Calculate text size using textbbox
+        # Calculate text size and position
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
-        background_height = text_height + 20
+        total_text_height = text_height + 20  # Add padding
 
-        # Add semi-transparent rectangle
+        # Position the text at the bottom of the image
+        x_start = (img.width - text_width) // 2  # Center text horizontally
+        y_start = img.height - total_text_height - 20  # 20px padding from bottom
+
+        # Create semi-transparent rectangle for text background
         overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
-            [(0, img.height - background_height), (img.width, img.height)],
-            fill=(0, 0, 0, 128)
+            [(0, img.height - total_text_height - 40), (img.width, img.height)],
+            fill=(0, 0, 0, 128)  # Semi-transparent black
         )
+
+        # Combine overlay and original image
         img = Image.alpha_composite(img, overlay)
 
-        # Add text on top
-        text_x = (img.width - text_width) // 2
-        text_y = img.height - background_height + 10
-        draw.text((text_x, text_y), wrapped_text, font=font, fill="white", align="center")
+        # Draw the text on the image
+        draw.text((x_start, y_start), wrapped_text, font=font, fill="white", align="center")
 
-        # Return image as NumPy array
+        # Return the final image as a NumPy array
         return np.array(img.convert("RGB"))
+
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
         return None
