@@ -169,23 +169,35 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
+        # Create drawing context and load font
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=30)
+        
+        # Wrap text and calculate dimensions
         wrapped_text = textwrap.fill(text, width=40)
         text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]
 
+        # Calculate textbox and text position
+        padding = 20
         x_start = (img.width - text_width) // 2
-        y_start = img.height - text_height - 20
+        y_start = img.height - text_height - padding
 
+        # Create overlay for textbox background
         overlay = Image.new("RGBA", img.size, (255, 255, 255, 0))
         draw_overlay = ImageDraw.Draw(overlay)
         draw_overlay.rectangle(
-            [(x_start - 10, y_start - 10), (x_start + text_width + 10, y_start + text_height + 10)],
-            fill=(0, 0, 0, 180)
+            [
+                (x_start - padding, y_start - padding),
+                (x_start + text_width + padding, y_start + text_height + padding),
+            ],
+            fill=(0, 0, 0, 180)  # Semi-transparent black background
         )
+
+        # Combine image with overlay and add text
         img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
         draw.text((x_start, y_start), wrapped_text, font=font, fill="white")
 
         return np.array(img.convert("RGB"))
