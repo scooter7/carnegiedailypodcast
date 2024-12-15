@@ -1,4 +1,3 @@
-
 # Standard Python and library imports
 import os
 import requests
@@ -17,6 +16,9 @@ from io import BytesIO
 import textwrap
 import logging
 import numpy as np
+import cairosvg
+from moviepy.video.fx.all import fadein, fadeout
+from moviepy.audio.fx.all import audio_fadein, audio_fadeout
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -24,235 +26,98 @@ logging.basicConfig(level=logging.INFO)
 # Load environment variables
 load_dotenv()
 
-# Set API keys (Streamlit secrets or local .env)
+# API Keys
 openai.api_key = os.getenv("OPENAI_API_KEY") or st.secrets["OPENAI_API_KEY"]
-elevenlabs_client = ElevenLabs(
-    api_key=os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"]
-)
+elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY") or st.secrets["ELEVENLABS_API_KEY"])
 
-# Configure speaker voices
-speaker_voice_map = {
-    "Lisa": "Rachel",
-    "Ali": "NYy9s57OPECPcDJavL3T"  # Replace with your voice ID
-}
+# Speaker voice map
+speaker_voice_map = {"Lisa": "Rachel", "Ali": "NYy9s57OPECPcDJavL3T"}
 
-# System prompt for script generation
+# Font file
+font_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/Arial.ttf"
+font_path = "Arial.ttf"
+if not os.path.exists(font_path):
+    with open(font_path, "wb") as f:
+        f.write(requests.get(font_url).content)
+
+# System prompt for OpenAI
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
-Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's offerings gleaned from the web page content. 
-The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.
-
-Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
-Only return JSON without additional text, explanations, or formatting.
+You are a podcast host for 'CX Overview.' Generate a robust, engaging conversation between Ali and Lisa based on provided summaries. 
+Each podcast should include school offerings. Format strictly as JSON: [{"speaker": "Lisa", "text": "..."}, {"speaker": "Ali", "text": "..."}].
 """
 
-# Font file for text overlay
-font_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/Arial.ttf"
-local_font_path = "Arial.ttf"
-
-# Download font file
-def download_font(font_url, local_path):
-    if not os.path.exists(local_path):
-        response = requests.get(font_url)
-        response.raise_for_status()
-        with open(local_path, "wb") as f:
-            f.write(response.content)
-download_font(font_url, local_font_path)
-
-# Calculate word limit based on duration
-def max_words_for_duration(duration_seconds):
-    wpm = 150  # Words per minute
-    return int((duration_seconds / 60) * wpm)
-
-# Scrape images and text from a URL
+# Scrape images and text
 def scrape_images_and_text(url):
-    """
-    Scrape all image URLs and text from a webpage.
-    """
     try:
         response = requests.get(url, timeout=10)
-        response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
-
-        # Extract image URLs, including background images in styles
-        image_urls = []
-
-        # Include <img> tags
-        for img in soup.find_all("img", src=True):
-            image_urls.append(urljoin(url, img["src"]))
-
-        # Include background images from inline styles
-        for style_tag in soup.find_all(style=True):
-            style = style_tag.get("style")
-            if "background-image" in style:
-                bg_url = style.split("url(")[1].split(")")[0].strip("'\"")
+        image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
+        for tag in soup.find_all(style=True):
+            if "background-image" in tag["style"]:
+                bg_url = tag["style"].split("url(")[1].split(")")[0].strip("'\"")
                 image_urls.append(urljoin(url, bg_url))
-
-        # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        return list(set(image_urls)), text[:5000]  # Remove duplicates
+        return list(set(image_urls)), text[:5000]
     except Exception as e:
-        logging.error(f"Error scraping content from {url}: {e}")
+        logging.error(f"Scraping failed: {e}")
         return [], ""
 
-# Filter valid images by size and format
-def filter_valid_images(image_urls, min_width=300, min_height=200):
-    """
-    Filter out images based on dimensions and formats.
-    """
+# Filter valid images
+def filter_valid_images(image_urls):
     valid_images = []
     for url in image_urls:
         try:
-            # Fetch image
             response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            
-            # Handle SVG separately
-            if url.lower().endswith(".svg"):
-                try:
-                    # Convert SVG to PNG using cairosvg
-                    png_data = cairosvg.svg2png(bytestring=response.content)
-                    img = Image.open(BytesIO(png_data))
-                except Exception as e:
-                    logging.warning(f"Error processing SVG: {url}, Error: {e}")
-                    continue
-            else:
-                # Process non-SVG images
-                img = Image.open(BytesIO(response.content))
-
-            # Filter based on dimensions
-            if img.width < min_width or img.height < min_height:
-                logging.warning(f"Skipping small image: {url} ({img.width}x{img.height})")
-                continue
-
-            # Ensure image has proper color channels
-            if img.mode not in ["RGB", "RGBA"]:
-                logging.warning(f"Skipping non-RGB image: {url} (mode: {img.mode})")
-                continue
-
-            # Add valid image URL
-            valid_images.append(url)
-        except Exception as e:
-            logging.warning(f"Error processing image: {url}, Error: {e}")
-
-    logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
+            img = Image.open(BytesIO(cairosvg.svg2png(bytestring=response.content)) if url.endswith(".svg") else BytesIO(response.content))
+            if img.width >= 300 and img.height >= 200:
+                valid_images.append(url)
+        except Exception:
+            continue
     return valid_images
-    
-# Summarize content using OpenAI
+
+# Summarize content
 def summarize_content(text):
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Summarize the following content into key points."},
-                {"role": "user", "content": text}
-            ]
+            messages=[{"role": "system", "content": "Summarize into key points."}, {"role": "user", "content": text}]
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        logging.warning(f"Error summarizing content: {e}")
+        logging.error(f"Summarization failed: {e}")
         return ""
 
-# Generate script using OpenAI
-def generate_script(enriched_text, max_words):
+# Generate script
+def generate_script(summary, max_words):
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"{system_prompt} The script should not exceed {max_words} words in total."},
-                {"role": "user", "content": enriched_text}
-            ]
+            messages=[{"role": "system", "content": f"{system_prompt} Max words: {max_words}."}, {"role": "user", "content": summary}]
         )
-        raw_content = response.choices[0].message.content.strip()
-        logging.info(f"Raw OpenAI response: {raw_content}")
-
-        # Remove surrounding Markdown backticks and potential "json" identifier
-        if raw_content.startswith("```") and raw_content.endswith("```"):
-            raw_content = raw_content.strip("```").strip()
-        if raw_content.lower().startswith("json"):
-            raw_content = raw_content[4:].strip()
-
-        logging.info(f"Processed content after cleanup: {raw_content}")
-        return json.loads(raw_content)
-    except json.JSONDecodeError as e:
-        logging.error(f"Invalid JSON in API response: {e}")
-        st.error("The API response is not valid JSON. Please check the prompt and input content.")
-        return []
+        return json.loads(response.choices[0].message.content.strip())
     except Exception as e:
-        logging.error(f"Error generating script: {e}")
+        logging.error(f"Script generation failed: {e}")
         return []
 
-# Synthesize speech with ElevenLabs
-def synthesize_cloned_voice(text, speaker):
-    try:
-        audio_generator = elevenlabs_client.generate(
-            text=text,
-            voice=speaker_voice_map[speaker],
-            model="eleven_multilingual_v2"
-        )
-        audio_content = b"".join(audio_generator)
-        temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        with open(temp_audio_file.name, "wb") as f:
-            f.write(audio_content)
-        return AudioSegment.from_file(temp_audio_file.name)
-    except Exception as e:
-        logging.error(f"Error synthesizing speech for {speaker}: {e}")
-        return None
+# Synthesize speech
+def synthesize_voice(text, speaker):
+    audio = elevenlabs_client.generate(text=text, voice=speaker_voice_map[speaker], model="eleven_multilingual_v2")
+    return AudioSegment.from_file(BytesIO(b"".join(audio)), format="mp3")
 
-# Add text overlay to an image
-def add_text_overlay(image_url, text, font_path):
-    """Add captions to an image with proper text wrapping and a semi-transparent background."""
-    try:
-        # Load the image
-        response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content)).convert("RGBA")
+# Add text overlay
+def add_text_overlay(image_url, text):
+    response = requests.get(image_url)
+    img = Image.open(BytesIO(response.content)).convert("RGBA")
+    font = ImageFont.truetype(font_path, size=int(img.height * 0.05))
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 180))
+    draw = ImageDraw.Draw(overlay)
+    draw.rectangle([0, img.height - 100, img.width, img.height], fill=(0, 0, 0, 180))
+    img = Image.alpha_composite(img, overlay)
+    draw = ImageDraw.Draw(img)
+    draw.text((20, img.height - 80), textwrap.fill(text, 40), font=font, fill="white")
+    return img
 
-        # Create drawing context and load font
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(font_path, size=30)
-
-        # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 10  # Padding of 5px on each side
-        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
-
-        # Calculate text size and position
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        total_text_height = text_height + 20  # Add padding
-
-        # Position the text at the bottom of the image
-        x_start = 20  # 20px padding from left
-        y_start = img.height - total_text_height - 20  # 20px padding from bottom
-
-        # Create semi-transparent rectangle for text background
-        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        background_draw = ImageDraw.Draw(background)
-        background_draw.rectangle(
-            [(0, img.height - total_text_height - 40), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black
-        )
-
-        # Combine overlay and original image
-        img = Image.alpha_composite(img, background)
-
-        # Draw the text on the image
-        draw = ImageDraw.Draw(img)
-        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
-
-        # Return the final image as a NumPy array
-        return np.array(img.convert("RGB"))
-
-    except Exception as e:
-        logging.error(f"Failed to add text overlay: {e}")
-        return None
-
-from moviepy.video.fx.all import fadein, fadeout
-from moviepy.audio.fx.all import audio_fadein, audio_fadeout
-from pydub import AudioSegment
-import tempfile
-
+# Create video
 def create_video(images, script, audio_segments):
     clips = []
     combined_audio = AudioSegment.silent(duration=0)
@@ -274,7 +139,7 @@ def create_video(images, script, audio_segments):
 # Streamlit App
 st.title("Podcast and Video Generator")
 url = st.text_input("Enter the webpage URL:")
-duration = st.radio("Podcast Duration (minutes):", [1, 2, 3])
+duration = st.radio("Podcast Duration (seconds):", [15, 30, 45, 60])
 
 if st.button("Generate Content"):
     with st.spinner("Scraping content..."):
@@ -284,14 +149,14 @@ if st.button("Generate Content"):
         with st.spinner("Summarizing content..."):
             summary = summarize_content(text)
         with st.spinner("Generating script..."):
-            script = generate_script(summary, max_words=duration * 150)
+            script = generate_script(summary, max_words=int(duration * 2.5))
         if script:
-            audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
+            audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
             with st.spinner("Creating video..."):
                 video, podcast = create_video(valid_images, script, audio_segments)
             st.video(video)
             st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
         else:
-            st.error("Failed to generate the script.")
+            st.error("Script generation failed.")
     else:
         st.error("No valid images or content found.")
