@@ -96,35 +96,48 @@ def scrape_images_and_text(url):
         return [], ""
 
 # Filter valid images by size and format
-def filter_valid_images(image_urls, min_width=400, min_height=300):
+def filter_valid_images(image_urls, min_width=300, min_height=200):
     """
-    Filter out images based on their dimensions and mode.
+    Filter out images based on dimensions and formats.
     """
     valid_images = []
     for url in image_urls:
         try:
+            # Fetch image
             response = requests.get(url, timeout=10)
             response.raise_for_status()
-            img = Image.open(BytesIO(response.content))
+            
+            # Handle SVG separately
+            if url.lower().endswith(".svg"):
+                try:
+                    # Convert SVG to PNG using cairosvg
+                    png_data = cairosvg.svg2png(bytestring=response.content)
+                    img = Image.open(BytesIO(png_data))
+                except Exception as e:
+                    logging.warning(f"Error processing SVG: {url}, Error: {e}")
+                    continue
+            else:
+                # Process non-SVG images
+                img = Image.open(BytesIO(response.content))
 
-            # Filter by size
+            # Filter based on dimensions
             if img.width < min_width or img.height < min_height:
                 logging.warning(f"Skipping small image: {url} ({img.width}x{img.height})")
                 continue
 
-            # Filter out images without proper color channels (e.g., RGB or RGBA)
+            # Ensure image has proper color channels
             if img.mode not in ["RGB", "RGBA"]:
                 logging.warning(f"Skipping non-RGB image: {url} (mode: {img.mode})")
                 continue
 
-            # Append the valid image URL
+            # Add valid image URL
             valid_images.append(url)
         except Exception as e:
             logging.warning(f"Error processing image: {url}, Error: {e}")
 
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
-
+    
 # Summarize content using OpenAI
 def summarize_content(text):
     try:
