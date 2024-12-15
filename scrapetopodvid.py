@@ -216,6 +216,16 @@ st.title("Podcast and Video Generator")
 url = st.text_input("Enter the webpage URL:")
 duration = st.radio("Podcast Duration (seconds):", [15, 30, 45, 60])
 
+# Initialize session state
+if "script" not in st.session_state:
+    st.session_state["script"] = None
+if "video_file" not in st.session_state:
+    st.session_state["video_file"] = None
+if "podcast_file" not in st.session_state:
+    st.session_state["podcast_file"] = None
+if "script_file" not in st.session_state:
+    st.session_state["script_file"] = None
+
 if st.button("Generate Content"):
     with st.spinner("Scraping content..."):
         images, text = scrape_images_and_text(url)
@@ -227,22 +237,33 @@ if st.button("Generate Content"):
         
         with st.spinner("Generating script..."):
             script = generate_script(summary, max_words=int(duration * 2.5))
+            st.session_state["script"] = script
         
-        if script:
+        if st.session_state["script"]:
             with st.spinner("Synthesizing audio..."):
-                audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
+                audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in st.session_state["script"]]
             
             with st.spinner("Creating video..."):
-                video, podcast = create_video(valid_images, script, audio_segments, font_path)
+                video, podcast = create_video(valid_images, st.session_state["script"], audio_segments, font_path)
+                
+                # Save the generated files in session state
+                st.session_state["video_file"] = video
+                st.session_state["podcast_file"] = podcast
                 
                 script_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
                 with open(script_file, "w") as f:
-                    json.dump(script, f, indent=4)
-                
-                st.video(video)
-                st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
-                st.download_button("Download Script", open(script_file, "rb"), file_name="script.json")
+                    json.dump(st.session_state["script"], f, indent=4)
+                st.session_state["script_file"] = script_file
+
+                st.success("Content generated successfully!")
+
         else:
             st.error("Script generation failed.")
     else:
         st.error("No valid images or content found.")
+
+# Display generated content if it exists
+if st.session_state["video_file"] and st.session_state["podcast_file"]:
+    st.video(st.session_state["video_file"])
+    st.download_button("Download Podcast", open(st.session_state["podcast_file"], "rb"), file_name="podcast.mp3")
+    st.download_button("Download Script", open(st.session_state["script_file"], "rb"), file_name="script.json")
