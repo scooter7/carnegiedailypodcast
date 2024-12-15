@@ -233,14 +233,12 @@ if st.button("Generate Content"):
                 audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
             
             with st.spinner("Creating video..."):
-                video, podcast = create_video(valid_images, script, audio_segments, local_font_path)
+                video, podcast = create_video(valid_images, script, audio_segments, font_path)
                 
-                # Save the script to a temporary file for download
                 script_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
                 with open(script_file, "w") as f:
                     json.dump(script, f, indent=4)
                 
-                # Display video and download options
                 st.video(video)
                 st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
                 st.download_button("Download Script", open(script_file, "rb"), file_name="script.json")
