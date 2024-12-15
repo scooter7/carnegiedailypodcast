@@ -111,10 +111,11 @@ def add_text_overlay(image_url, text):
     font = ImageFont.truetype(font_path, size=int(img.height * 0.05))
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 180))
     draw = ImageDraw.Draw(overlay)
-    draw.rectangle([0, img.height - 100, img.width, img.height], fill=(0, 0, 0, 180))
+    wrapped_text = textwrap.fill(text, width=int(img.width / 15))
+    text_size = draw.textsize(wrapped_text, font=font)
+    position = ((img.width - text_size[0]) // 2, img.height - text_size[1] - 20)
+    draw.text(position, wrapped_text, font=font, fill="white")
     img = Image.alpha_composite(img, overlay)
-    draw = ImageDraw.Draw(img)
-    draw.text((20, img.height - 80), textwrap.fill(text, 40), font=font, fill="white")
     return img
 
 # Create video
@@ -132,9 +133,11 @@ def create_video(images, script, audio_segments):
         image_clip = ImageClip(temp_img, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
         clips.append(image_clip)
     final_video = concatenate_videoclips(clips, method="compose")
-    combined_audio.export("podcast.mp3", format="mp3")
-    final_video.write_videofile("video.mp4", codec="libx264", fps=24, audio_codec="aac")
-    return "video.mp4", "podcast.mp3"
+    podcast_file = "podcast.mp3"
+    video_file = "video.mp4"
+    combined_audio.export(podcast_file, format="mp3")
+    final_video.write_videofile(video_file, codec="libx264", fps=24, audio_codec="aac")
+    return video_file, podcast_file
 
 # Streamlit App
 st.title("Podcast and Video Generator")
@@ -151,11 +154,16 @@ if st.button("Generate Content"):
         with st.spinner("Generating script..."):
             script = generate_script(summary, max_words=int(duration * 2.5))
         if script:
-            audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
+            with st.spinner("Synthesizing audio..."):
+                audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
             with st.spinner("Creating video..."):
                 video, podcast = create_video(valid_images, script, audio_segments)
-            st.video(video)
-            st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
+                script_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
+                with open(script_file, "w") as f:
+                    json.dump(script, f, indent=4)
+                st.video(video)
+                st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
+                st.download_button("Download Script", open(script_file, "rb"), file_name="script.json")
         else:
             st.error("Script generation failed.")
     else:
