@@ -105,18 +105,48 @@ def synthesize_voice(text, speaker):
     return AudioSegment.from_file(BytesIO(b"".join(audio)), format="mp3")
 
 # Add text overlay
-def add_text_overlay(image_url, text):
-    response = requests.get(image_url)
-    img = Image.open(BytesIO(response.content)).convert("RGBA")
-    font = ImageFont.truetype(font_path, size=int(img.height * 0.05))
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 180))
-    draw = ImageDraw.Draw(overlay)
-    wrapped_text = textwrap.fill(text, width=int(img.width / 15))
-    text_size = draw.textsize(wrapped_text, font=font)
-    position = ((img.width - text_size[0]) // 2, img.height - text_size[1] - 20)
-    draw.text(position, wrapped_text, font=font, fill="white")
-    img = Image.alpha_composite(img, overlay)
-    return img
+def add_text_overlay(image_url, text, font_path):
+    try:
+        # Load the image
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content)).convert("RGBA")
+
+        # Create overlay
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 180))
+        draw = ImageDraw.Draw(overlay)
+        font_size = int(img.height * 0.05)
+        font = ImageFont.truetype(font_path, size=font_size)
+
+        # Wrap text to fit within image width
+        max_chars_per_line = int(img.width / font_size * 1.2)
+        wrapped_text = textwrap.fill(text, width=max_chars_per_line)
+
+        # Calculate text size using textbbox
+        lines = wrapped_text.split("\n")
+        total_height = 0
+        line_heights = []
+        for line in lines:
+            bbox = draw.textbbox((0, 0), line, font=font)
+            height = bbox[3] - bbox[1]
+            line_heights.append(height)
+            total_height += height
+
+        # Calculate position to center text at the bottom
+        y_start = img.height - total_height - 20
+        x_start = 20
+
+        # Draw text on overlay
+        for i, line in enumerate(lines):
+            draw.text((x_start, y_start + sum(line_heights[:i])), line, font=font, fill="white")
+
+        # Merge overlay with the original image
+        img = Image.alpha_composite(img, overlay)
+        return img
+
+    except Exception as e:
+        logging.error(f"Error adding text overlay: {e}")
+        return None
 
 # Create video
 def create_video(images, script, audio_segments):
