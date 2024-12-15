@@ -64,24 +64,32 @@ def max_words_for_duration(duration_seconds):
     wpm = 150  # Words per minute
     return int((duration_seconds / 60) * wpm)
 
-# Filter valid image formats and URLs
-def filter_valid_images(image_urls, min_width=400, min_height=300):
+def filter_valid_images(image_urls, min_width=200, min_height=200):
     valid_images = []
     for url in image_urls:
         try:
+            # Make the request
             response = requests.get(url, timeout=10)
             response.raise_for_status()
+            
+            # Check Content-Type for valid image MIME types
+            content_type = response.headers.get("Content-Type", "").lower()
+            if not content_type.startswith("image/"):
+                logging.warning(f"Skipping non-image URL: {url} (Content-Type: {content_type})")
+                continue
+            
+            # Open the image using PIL
             img = Image.open(BytesIO(response.content))
-
-            # Skip small or greyscale images
+            
+            # Validate resolution and color mode
             if img.width < min_width or img.height < min_height:
                 logging.warning(f"Skipping small image: {url} ({img.width}x{img.height})")
                 continue
             if img.mode not in ["RGB", "RGBA"]:
                 logging.warning(f"Skipping non-RGB image: {url} (mode: {img.mode})")
                 continue
-
-            # Append valid image URL
+            
+            # Add to valid images
             valid_images.append(url)
         except Exception as e:
             logging.warning(f"Error processing image: {url}, Error: {e}")
