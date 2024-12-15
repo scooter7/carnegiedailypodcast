@@ -208,19 +208,27 @@ if st.button("Generate Content"):
     with st.spinner("Scraping content..."):
         images, text = scrape_images_and_text(url)
         valid_images = filter_valid_images(images)
+    
     if valid_images and text:
         with st.spinner("Summarizing content..."):
             summary = summarize_content(text)
+        
         with st.spinner("Generating script..."):
             script = generate_script(summary, max_words=int(duration * 2.5))
+        
         if script:
             with st.spinner("Synthesizing audio..."):
-                audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
+                audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
+            
             with st.spinner("Creating video..."):
-                video, podcast = create_video(valid_images, script, audio_segments)
+                video, podcast = create_video(valid_images, script, audio_segments, local_font_path)
+                
+                # Save the script to a temporary file for download
                 script_file = tempfile.NamedTemporaryFile(delete=False, suffix=".json").name
                 with open(script_file, "w") as f:
                     json.dump(script, f, indent=4)
+                
+                # Display video and download options
                 st.video(video)
                 st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
                 st.download_button("Download Script", open(script_file, "rb"), file_name="script.json")
