@@ -255,39 +255,30 @@ import tempfile
 
 def create_video_with_audio(images, script, audio_segments, fade_duration=0.5, silence_duration=0.5):
     """
-    Create a video with audio, text overlays, and synchronized durations, adding silence between speakers.
+    Create a video with audio, synchronized text overlays, smooth fades, and pauses between speakers.
     """
     clips = []
-    combined_audio = AudioSegment.empty()  # To hold the full podcast audio
+    combined_audio = AudioSegment.empty()
 
-    # Process each speaker's audio and corresponding image
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
-        # Add short silence before the next speaker
+        # Add silence before each segment
         silence = AudioSegment.silent(duration=silence_duration * 1000)
-        audio_with_gap = silence + audio  # Add pause at the beginning of each segment
+        audio_with_gap = silence + audio
+        combined_audio += audio_with_gap
 
-        # Save the adjusted audio temporarily
+        # Save the adjusted audio
         temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
         audio_with_gap.export(temp_audio_path, format="mp3")
 
-        # Add the audio segment to the combined podcast audio
-        combined_audio += audio_with_gap
-
-        # Add text overlay to the image
+        # Add text overlay to image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
-            logging.error(f"Failed to create overlay for image: {image_url}")
             continue
-
-        # Save the overlay image temporarily for MoviePy
         temp_img_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
-        Image.fromarray(overlay_image).save(temp_img_path)
+        overlay_image.save(temp_img_path)
 
-        # Create a MoviePy audio clip with fade-in/out effects
-        audio_clip = AudioFileClip(temp_audio_path)
-        audio_clip = audio_clip.fx(audio_fadein, fade_duration).fx(audio_fadeout, fade_duration)
-
-        # Set the image clip duration to match the audio segment
+        # Load audio and create clip
+        audio_clip = AudioFileClip(temp_audio_path).fx(audio_fadein, fade_duration).fx(audio_fadeout, fade_duration)
         image_clip = (
             ImageClip(temp_img_path, duration=audio_clip.duration)
             .set_audio(audio_clip)
@@ -298,67 +289,41 @@ def create_video_with_audio(images, script, audio_segments, fade_duration=0.5, s
 
         clips.append(image_clip)
 
-    # Ensure the last clip fills the remaining time to match the full audio duration
-    if clips:
-        total_audio_duration = combined_audio.duration_seconds
-        current_video_duration = sum(clip.duration for clip in clips)
-        if current_video_duration < total_audio_duration:
-            extra_duration = total_audio_duration - current_video_duration
-            last_clip = clips[-1].set_duration(clips[-1].duration + extra_duration)
-            clips[-1] = last_clip
+    # Extend the last clip to match the full audio duration
+    total_audio_duration = combined_audio.duration_seconds
+    current_video_duration = sum(clip.duration for clip in clips)
+    if clips and current_video_duration < total_audio_duration:
+        last_clip = clips[-1].set_duration(clips[-1].duration + (total_audio_duration - current_video_duration))
+        clips[-1] = last_clip
 
-    # Concatenate all video clips into the final video
+    # Combine all clips
     final_video = concatenate_videoclips(clips, method="compose")
-
-    # Save the full podcast audio
-    podcast_file = "final_podcast.mp3"
-    combined_audio.export(podcast_file, format="mp3")
-
-    # Write the final video file
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
+    # Save combined podcast audio
+    podcast_file = "final_podcast.mp3"
+    combined_audio.export(podcast_file, format="mp3")
+
     return final_video_path, podcast_file
 
-# Streamlit app interface
-st.title("CX Podcast and Video Generator")
-url_input = st.text_input("Enter the URL of the page to scrape text and images:")
+# Streamlit App Integration
+st.title("Podcast and Video Generator")
 
-duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
+# Example input section
+url_input = st.text_input("Enter the URL of the page to scrape text and images:")
+duration = st.radio("Select Duration (seconds)", [30, 60, 90], index=0)
 
 if st.button("Generate Content"):
-    if not url_input.strip():
-        st.error("Please enter a valid URL.")
-    else:
-        images, text = scrape_images_and_text(url_input.strip())
-        filtered_images = filter_valid_images(images)
+    # Placeholder for scraped data
+    images = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]  # Replace with scraped URLs
+    script = [{"speaker": "Lisa", "text": "Welcome to the podcast!"},
+              {"speaker": "Ali", "text": "Thanks for having me."}]  # Replace with AI script output
+    audio_segments = [AudioSegment.silent(1000), AudioSegment.silent(1200)]  # Replace with TTS output
 
-        if text:
-            summary = summarize_content(text)
-            if summary:
-                max_words = max_words_for_duration(duration)
-                conversation_script = generate_script(summary, max_words)
-                if conversation_script:
-                    audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
-                    audio_segments = [audio for audio in audio_segments if audio]
+    # Generate video and podcast
+    video_file, podcast_file = create_video_with_audio(images, script, audio_segments)
 
-                    if audio_segments:
-                        combined_audio = sum(audio_segments, AudioSegment.empty())
-                        podcast_file = "podcast.mp3"
-                        combined_audio.export(podcast_file, format="mp3")
-                        st.audio(podcast_file)
-                        st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
-
-                        script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
-                        script_file = "conversation_script.txt"
-                        with open(script_file, "w") as f:
-                            f.write(script_text)
-
-                        st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
-
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments)
-                        if video_file:
-                            st.video(video_file)
-                            st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
-                        else:
-                            st.error("Failed to create video.")
+    # Display video and download options
+    st.video(video_file)
+    st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
