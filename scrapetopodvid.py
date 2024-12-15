@@ -286,7 +286,7 @@ if st.button("Generate Content"):
         with st.spinner("Generating script..."):
             script = generate_script(summary, max_words=duration * 150)
         if script:
-            audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
+            audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in script]
             with st.spinner("Creating video..."):
                 video, podcast = create_video(valid_images, script, audio_segments)
             st.video(video)
