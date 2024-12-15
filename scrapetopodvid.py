@@ -250,36 +250,44 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 
 from moviepy.video.fx.all import fadein, fadeout
 from moviepy.audio.fx.all import audio_fadein, audio_fadeout
+from pydub import AudioSegment
+import tempfile
 
-def create_video_with_audio(images, script, audio_segments, fade_duration=0.5):
+def create_video_with_audio(images, script, audio_segments, fade_duration=0.5, silence_duration=0.5):
     """
-    Create a video with audio, text overlays, smooth fades, and synchronized duration.
+    Create a video with audio, text overlays, and synchronized durations, adding silence between speakers.
     """
     clips = []
-    total_audio_duration = 0  # Track the total audio duration
+    combined_audio = AudioSegment.empty()  # To hold the full podcast audio
 
-    # Create clips with text overlay and audio
+    # Process each speaker's audio and corresponding image
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
-        # Add text overlay
+        # Add short silence before the next speaker
+        silence = AudioSegment.silent(duration=silence_duration * 1000)
+        audio_with_gap = silence + audio  # Add pause at the beginning of each segment
+
+        # Save the adjusted audio temporarily
+        temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+        audio_with_gap.export(temp_audio_path, format="mp3")
+
+        # Add the audio segment to the combined podcast audio
+        combined_audio += audio_with_gap
+
+        # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
             logging.error(f"Failed to create overlay for image: {image_url}")
             continue
 
-        # Save overlay image temporarily
-        temp_img_path = f"temp_image_{idx}.png"
+        # Save the overlay image temporarily for MoviePy
+        temp_img_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
         Image.fromarray(overlay_image).save(temp_img_path)
 
-        # Export audio to temporary file
-        temp_audio_path = f"audio_{idx}.mp3"
-        audio = audio[:audio.duration_seconds * 1000]  # Trim audio to avoid overflow
-        audio.export(temp_audio_path, format="mp3")
-
-        # Load trimmed audio clip
+        # Create a MoviePy audio clip with fade-in/out effects
         audio_clip = AudioFileClip(temp_audio_path)
         audio_clip = audio_clip.fx(audio_fadein, fade_duration).fx(audio_fadeout, fade_duration)
 
-        # Set image clip duration to audio duration
+        # Set the image clip duration to match the audio segment
         image_clip = (
             ImageClip(temp_img_path, duration=audio_clip.duration)
             .set_audio(audio_clip)
@@ -289,24 +297,28 @@ def create_video_with_audio(images, script, audio_segments, fade_duration=0.5):
         )
 
         clips.append(image_clip)
-        total_audio_duration += audio_clip.duration
 
-    # Extend the last clip if needed to match total audio duration
+    # Ensure the last clip fills the remaining time to match the full audio duration
     if clips:
-        video_duration = sum(clip.duration for clip in clips)
-        if video_duration < total_audio_duration:
-            extra_duration = total_audio_duration - video_duration
+        total_audio_duration = combined_audio.duration_seconds
+        current_video_duration = sum(clip.duration for clip in clips)
+        if current_video_duration < total_audio_duration:
+            extra_duration = total_audio_duration - current_video_duration
             last_clip = clips[-1].set_duration(clips[-1].duration + extra_duration)
             clips[-1] = last_clip
 
-    # Concatenate clips with smooth transitions
-    final_video = concatenate_videoclips(clips, method="compose", padding=-fade_duration)
+    # Concatenate all video clips into the final video
+    final_video = concatenate_videoclips(clips, method="compose")
 
-    # Write final video
+    # Save the full podcast audio
+    podcast_file = "final_podcast.mp3"
+    combined_audio.export(podcast_file, format="mp3")
+
+    # Write the final video file
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
-    return final_video_path
+    return final_video_path, podcast_file
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
