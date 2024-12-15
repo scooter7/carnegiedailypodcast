@@ -253,75 +253,45 @@ from moviepy.audio.fx.all import audio_fadein, audio_fadeout
 from pydub import AudioSegment
 import tempfile
 
-def create_video_with_audio(images, script, audio_segments, fade_duration=0.5, silence_duration=0.5):
+def create_video(images, script, audio_segments):
     clips = []
-    combined_audio = AudioSegment.empty()
-
-    for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
-        silence = AudioSegment.silent(duration=silence_duration * 1000)
-        audio_with_gap = silence + audio
-        combined_audio += audio_with_gap
-
-        temp_audio_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
-        audio_with_gap.export(temp_audio_path, format="mp3")
-
-        overlay_image = add_text_overlay(image_url, part["text"], local_font_path)
-        if overlay_image is None:
-            continue
-
-        temp_img_path = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
-        overlay_image.save(temp_img_path)
-
-        audio_clip = AudioFileClip(temp_audio_path).fx(audio_fadein, fade_duration).fx(audio_fadeout, fade_duration)
-        image_clip = ImageClip(temp_img_path, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
-
+    combined_audio = AudioSegment.silent(duration=0)
+    for img_url, part, audio in zip(images, script, audio_segments):
+        combined_audio += audio + AudioSegment.silent(duration=500)
+        img = add_text_overlay(img_url, part["text"])
+        temp_img = tempfile.NamedTemporaryFile(delete=False, suffix=".png").name
+        img.save(temp_img)
+        temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3").name
+        audio.export(temp_audio, format="mp3")
+        audio_clip = AudioFileClip(temp_audio).fx(audio_fadein, 0.5).fx(audio_fadeout, 0.5)
+        image_clip = ImageClip(temp_img, duration=audio_clip.duration).set_audio(audio_clip).set_fps(24)
         clips.append(image_clip)
-
-    if not clips:
-        raise ValueError("No valid video clips were created.")
-
-    total_audio_duration = combined_audio.duration_seconds
-    current_video_duration = sum(clip.duration for clip in clips)
-    if current_video_duration < total_audio_duration:
-        extra_duration = total_audio_duration - current_video_duration
-        clips[-1] = clips[-1].set_duration(clips[-1].duration + extra_duration)
-
     final_video = concatenate_videoclips(clips, method="compose")
-    final_video_path = "final_video.mp4"
-    final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
+    combined_audio.export("podcast.mp3", format="mp3")
+    final_video.write_videofile("video.mp4", codec="libx264", fps=24, audio_codec="aac")
+    return "video.mp4", "podcast.mp3"
 
-    podcast_file = "final_podcast.mp3"
-    combined_audio.export(podcast_file, format="mp3")
-
-    return final_video_path, podcast_file
-
-# Streamlit app
+# Streamlit App
 st.title("Podcast and Video Generator")
+url = st.text_input("Enter the webpage URL:")
+duration = st.radio("Podcast Duration (minutes):", [1, 2, 3])
 
-url_input = st.text_input("Enter the URL of the page to scrape text and images:")
 if st.button("Generate Content"):
-    if not url_input:
-        st.error("Please enter a URL.")
+    with st.spinner("Scraping content..."):
+        images, text = scrape_images_and_text(url)
+        valid_images = filter_valid_images(images)
+    if valid_images and text:
+        with st.spinner("Summarizing content..."):
+            summary = summarize_content(text)
+        with st.spinner("Generating script..."):
+            script = generate_script(summary, max_words=duration * 150)
+        if script:
+            audio_segments = [synthesize_voice(part["text"], part["speaker"]) for part in script]
+            with st.spinner("Creating video..."):
+                video, podcast = create_video(valid_images, script, audio_segments)
+            st.video(video)
+            st.download_button("Download Podcast", open(podcast, "rb"), file_name="podcast.mp3")
+        else:
+            st.error("Failed to generate the script.")
     else:
-        st.info("Generating content, this may take a few minutes...")
-        try:
-            # Example placeholder data
-            images = ["https://example.com/image1.jpg", "https://example.com/image2.jpg"]
-            script = [{"speaker": "Lisa", "text": "Welcome to the podcast!"},
-                      {"speaker": "Ali", "text": "Thanks for having me."}]
-            audio_segments = [
-                AudioSegment.silent(duration=1000),  # Placeholder for generated audio
-                AudioSegment.silent(duration=1200)
-            ]
-
-            video_file, podcast_file = create_video_with_audio(images, script, audio_segments)
-
-            st.video(video_file)
-            st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="final_podcast.mp3")
-
-        except Exception as e:
-            logging.error(f"Error: {e}")
-            st.error("An error occurred. Please check the logs.")
-    # Display video and download options
-    st.video(video_file)
-    st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
+        st.error("No valid images or content found.")
