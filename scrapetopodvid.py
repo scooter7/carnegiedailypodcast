@@ -99,10 +99,22 @@ def generate_script(summary, max_words):
         logging.error(f"Script generation failed: {e}")
         return []
 
-# Synthesize speech
-def synthesize_voice(text, speaker):
-    audio = elevenlabs_client.generate(text=text, voice=speaker_voice_map[speaker], model="eleven_multilingual_v2")
-    return AudioSegment.from_file(BytesIO(b"".join(audio)), format="mp3")
+# Synthesize speech with ElevenLabs
+def synthesize_cloned_voice(text, speaker):
+    try:
+        audio_generator = elevenlabs_client.generate(
+            text=text,
+            voice=speaker_voice_map[speaker],
+            model="eleven_multilingual_v2"
+        )
+        audio_content = b"".join(audio_generator)
+        temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+        with open(temp_audio_file.name, "wb") as f:
+            f.write(audio_content)
+        return AudioSegment.from_file(temp_audio_file.name)
+    except Exception as e:
+        logging.error(f"Error synthesizing speech for {speaker}: {e}")
+        return None
 
 # Add text overlay
 def add_text_overlay(image_url, text, font_path):
