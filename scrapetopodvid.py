@@ -255,52 +255,54 @@ def create_video_with_audio(images, script, audio_segments, fade_duration=0.5):
     """
     Create a video with audio, text overlays, smooth fades, and synchronized duration.
     """
-    clips = []  # To hold image + audio clips
-    total_audio_duration = sum(audio.duration_seconds for audio in audio_segments)  # Total audio length
+    clips = []
+    total_audio_duration = 0  # Track the total audio duration
 
-    # Create clips with text overlay and audio for each speaker
+    # Create clips with text overlay and audio
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
-        # Add text overlay to the image
+        # Add text overlay
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
         if overlay_image is None:
             logging.error(f"Failed to create overlay for image: {image_url}")
             continue
 
-        # Save the overlay image temporarily for MoviePy
+        # Save overlay image temporarily
         temp_img_path = f"temp_image_{idx}.png"
         Image.fromarray(overlay_image).save(temp_img_path)
 
-        # Export audio to a temporary file
+        # Export audio to temporary file
         temp_audio_path = f"audio_{idx}.mp3"
+        audio = audio[:audio.duration_seconds * 1000]  # Trim audio to avoid overflow
         audio.export(temp_audio_path, format="mp3")
 
-        # Create audio clip with fade effects
+        # Load trimmed audio clip
         audio_clip = AudioFileClip(temp_audio_path)
         audio_clip = audio_clip.fx(audio_fadein, fade_duration).fx(audio_fadeout, fade_duration)
 
-        # Create an image clip with the audio
+        # Set image clip duration to audio duration
         image_clip = (
             ImageClip(temp_img_path, duration=audio_clip.duration)
             .set_audio(audio_clip)
             .set_fps(24)
-            .fx(fadein, fade_duration)  # Fade-in effect
-            .fx(fadeout, fade_duration)  # Fade-out effect
+            .fx(fadein, fade_duration)
+            .fx(fadeout, fade_duration)
         )
 
         clips.append(image_clip)
+        total_audio_duration += audio_clip.duration
 
-    # If the total video duration is shorter than the audio, extend the last clip
+    # Extend the last clip if needed to match total audio duration
     if clips:
-        current_video_duration = sum(clip.duration for clip in clips)
-        if current_video_duration < total_audio_duration:
-            last_clip = clips[-1]
-            last_clip = last_clip.set_duration(last_clip.duration + (total_audio_duration - current_video_duration))
+        video_duration = sum(clip.duration for clip in clips)
+        if video_duration < total_audio_duration:
+            extra_duration = total_audio_duration - video_duration
+            last_clip = clips[-1].set_duration(clips[-1].duration + extra_duration)
             clips[-1] = last_clip
 
-    # Concatenate video clips with seamless transitions
+    # Concatenate clips with smooth transitions
     final_video = concatenate_videoclips(clips, method="compose", padding=-fade_duration)
 
-    # Write the final video to a file
+    # Write final video
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
