@@ -39,7 +39,7 @@ speaker_voice_map = {
 # System prompt for script generation
 system_prompt = """
 You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
-Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make jusgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
+Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's offerings gleaned from the web page content. 
 The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
