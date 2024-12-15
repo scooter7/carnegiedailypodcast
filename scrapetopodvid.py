@@ -200,7 +200,7 @@ def synthesize_cloned_voice(text, speaker):
         return None
 
 # Add text overlay to an image
-def add_text_overlay_on_fly(image_url, text, font_path):
+def add_text_overlay(image_url, text, font_path):
     """Add captions to an image with proper text wrapping and a semi-transparent background."""
     try:
         # Load the image
