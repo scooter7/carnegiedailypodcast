@@ -40,7 +40,7 @@ speaker_voice_map = {
 system_prompt = """
 You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
 Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make judgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
-The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.
+The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.Make sure that, anytime, collegexpress is mentioned, it is pronounced as college express. However, at the end of the video, it should be spelled as collegexpress.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
 Only return JSON without additional text, explanations, or formatting.
@@ -88,12 +88,20 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-# Scrape images and text from a URL
+# Scrape images, logo, and text from a URL
 def scrape_images_and_text(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extract the logo URL from the <div> with class "client-logo"
+        logo_div = soup.find("div", class_="client-logo")
+        logo_url = None
+        if logo_div and "style" in logo_div.attrs:
+            style_attr = logo_div["style"]
+            if "background-image" in style_attr:
+                logo_url = style_attr.split("url('")[1].split("')")[0]
 
         # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
@@ -101,10 +109,10 @@ def scrape_images_and_text(url):
 
         # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        return valid_images, text[:5000]
+        return logo_url, valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
-        return [], ""
+        return None, [], ""
 
 # Summarize content using OpenAI
 def summarize_content(text):
@@ -218,38 +226,116 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 
 from moviepy.video.fx.all import fadein, fadeout
 
-def create_video_with_audio(images, script, audio_segments):
+def create_video_with_audio(images, script, audio_segments, logo_url):
+    """
+    Creates a video with audio, including the dynamically scraped logo as the first image
+    and a static image at the end, with textboxes below each image for consistent text size.
+    """
     clips = []
 
+    # Add the college logo as the first image
+    try:
+        logo_overlay_image = add_text_overlay_on_fly(logo_url, "Welcome to CX Overview", local_font_path)
+        if logo_overlay_image is not None:
+            temp_logo_path = "temp_logo.png"
+            Image.fromarray(logo_overlay_image).save(temp_logo_path)
+
+            # Create a silent audio clip for the logo (adjust duration as needed)
+            silent_audio = AudioSegment.silent(duration=2000)  # 2 seconds of silence
+            temp_audio_path = "logo_audio.mp3"
+            silent_audio.export(temp_audio_path, format="mp3")
+
+            # Create MoviePy audio and image clip for the logo
+            audio_clip = AudioFileClip(temp_audio_path)
+            image_clip = (
+                ImageClip(temp_logo_path, duration=audio_clip.duration)
+                .set_audio(audio_clip)
+                .set_fps(24)
+            )
+
+            # Add fade-in and fade-out transitions for the logo
+            image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
+            clips.append(image_clip)
+        else:
+            logging.error("Logo overlay image not generated.")
+    except Exception as e:
+        logging.error(f"Failed to add logo as first image: {e}")
+
+    # Add main content (images + script + audio)
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
-        # Add text overlay to the image
-        overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
-        if overlay_image is None:
-            logging.error(f"Failed to create overlay for image: {image_url}")
+        try:
+            # Fetch and process image
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+            img = Image.open(BytesIO(response.content))
+
+            # Add a consistent-width textbox below the image
+            text_image = Image.new("RGBA", (img.width, img.height + 50), (255, 255, 255, 255))  # Extend height for text
+            text_image.paste(img, (0, 0))  # Paste original image on top
+
+            draw = ImageDraw.Draw(text_image)
+            font = ImageFont.truetype(local_font_path, size=20)
+            text = textwrap.fill(part["text"], width=50)  # Wrap text to 50 characters
+
+            # Calculate textbox position
+            text_x = 10  # Padding from left
+            text_y = img.height + 10  # Start text below the image
+            draw.text((text_x, text_y), text, fill="black", font=font)
+
+            # Save the overlay image temporarily for MoviePy
+            temp_img_path = f"temp_image_{idx}.png"
+            text_image.convert("RGB").save(temp_img_path)
+
+            # Save the audio temporarily for MoviePy
+            temp_audio_path = f"audio_{idx}.mp3"
+            audio.export(temp_audio_path, format="mp3")
+
+            # Create MoviePy audio clip
+            audio_clip = AudioFileClip(temp_audio_path)
+
+            # Create MoviePy image clip with the same duration as the audio segment
+            image_clip = (
+                ImageClip(temp_img_path, duration=audio_clip.duration)
+                .set_audio(audio_clip)
+                .set_fps(24)
+            )
+
+            # Add fade-in and fade-out transitions
+            image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
+            clips.append(image_clip)
+
+        except Exception as e:
+            logging.error(f"Failed to process main content image: {image_url}. Error: {e}")
             continue
 
-        # Save the overlay image temporarily for MoviePy
-        temp_img_path = f"temp_image_{idx}.png"
-        Image.fromarray(overlay_image).save(temp_img_path)
+    # Add the static CX Overview image at the end
+    try:
+        cx_image_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg"
+        response = requests.get(cx_image_url, timeout=10)
+        response.raise_for_status()
+        cx_image = Image.open(BytesIO(response.content)).convert("RGBA")
+        temp_cx_path = "temp_cx_image.png"
+        cx_image.save(temp_cx_path)
 
-        # Save the audio temporarily for MoviePy
-        temp_audio_path = f"audio_{idx}.mp3"
-        audio.export(temp_audio_path, format="mp3")
+        # Add silent audio for the static image
+        silent_audio = AudioSegment.silent(duration=3000)  # 3 seconds of silence
+        temp_cx_audio_path = "cx_audio.mp3"
+        silent_audio.export(temp_cx_audio_path, format="mp3")
 
-        # Create MoviePy audio clip
-        audio_clip = AudioFileClip(temp_audio_path)
-
-        # Create MoviePy image clip with the same duration as the audio segment
-        image_clip = (
-            ImageClip(temp_img_path, duration=audio_clip.duration)
-            .set_audio(audio_clip)
+        # Create MoviePy audio and image clip for the CX Overview image
+        cx_audio_clip = AudioFileClip(temp_cx_audio_path)
+        cx_image_clip = (
+            ImageClip(temp_cx_path, duration=cx_audio_clip.duration)
+            .set_audio(cx_audio_clip)
             .set_fps(24)
         )
 
         # Add fade-in and fade-out transitions
-        image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
+        cx_image_clip = fadein(cx_image_clip, 0.5).fx(fadeout, 0.5)
+        clips.append(cx_image_clip)
 
-        clips.append(image_clip)
+    except Exception as e:
+        logging.error(f"Failed to add CX Overview image: {e}")
 
     # Ensure there are valid clips
     if not clips:
@@ -275,8 +361,11 @@ if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        images, text = scrape_images_and_text(url_input.strip())
+        logo_url, images, text = scrape_images_and_text(url_input.strip())
         filtered_images = filter_valid_images(images)
+
+        if not logo_url:
+            st.warning("No logo found for this page. Skipping logo addition.")
 
         if text:
             summary = summarize_content(text)
@@ -301,7 +390,7 @@ if st.button("Generate Content"):
 
                         st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments)
+                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, logo_url)
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
