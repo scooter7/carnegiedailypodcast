@@ -99,16 +99,16 @@ def scrape_images_and_text(url):
         soup = BeautifulSoup(response.text, "html.parser")
 
         # Initialize variables
-        header_url = None
+        logo_url = None
 
-        # Extract the header image URL from <div class="content">
-        content_div = soup.find("div", class_="content")
-        if content_div and "style" in content_div.attrs:
-            style_attr = content_div["style"]
-            # Use regex to extract the first URL from the background-image property
-            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/\d+_header\.jpg)['\"]?\)", style_attr)
+        # Extract the logo URL from <div class="client-logo">
+        logo_div = soup.find("div", class_="client-logo")
+        if logo_div and "style" in logo_div.attrs:
+            style_attr = logo_div["style"]
+            # Use regex to extract the URL from the style attribute
+            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/\d+_logo\.jpg)['\"]?\)", style_attr)
             if match:
-                header_url = match.group(1)  # Extract the exact header image URL
+                logo_url = match.group(1)  # Extract the exact logo URL
 
         # Extract other image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
@@ -117,8 +117,8 @@ def scrape_images_and_text(url):
         # Extract and truncate text from the page
         text = soup.get_text(separator=" ", strip=True)
 
-        # Return the extracted header, valid images, and text
-        return header_url, valid_images, text[:5000]
+        # Return the extracted logo, valid images, and text
+        return logo_url, valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
         return None, [], ""
@@ -186,48 +186,64 @@ def synthesize_cloned_voice(text, speaker):
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
-    """Add captions to an image with proper text wrapping and a semi-transparent background."""
+    """
+    Add captions to an image with proper text wrapping and a semi-transparent background.
+    Ensures text spans across the textbox width and is center-aligned.
+    """
     try:
         # Load the image
         response = requests.get(image_url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
-        # Create drawing context and load font
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(font_path, size=30)
+        # Define text box padding and dimensions
+        text_box_padding = 20  # Padding inside the text box
+        text_box_height = 100  # Height of the text box
 
-        # Calculate maximum text width (pixels) for wrapping
-        max_text_width = img.width - 10  # Padding of 5px on each side
-        wrapped_text = textwrap.fill(text, width=40)  # Approx. 40 chars per line
+        # Extend the image height to add space for the text box
+        canvas = Image.new("RGBA", (img.width, img.height + text_box_height), (255, 255, 255, 255))
+        canvas.paste(img, (0, 0))
 
-        # Calculate text size and position
-        text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
-        text_width = text_bbox[2] - text_bbox[0]
-        text_height = text_bbox[3] - text_bbox[1]
-        total_text_height = text_height + 20  # Add padding
-
-        # Position the text at the bottom of the image
-        x_start = 20  # 20px padding from left
-        y_start = img.height - total_text_height - 20  # 20px padding from bottom
-
-        # Create semi-transparent rectangle for text background
-        background = Image.new("RGBA", img.size, (255, 255, 255, 0))
-        background_draw = ImageDraw.Draw(background)
-        background_draw.rectangle(
-            [(0, img.height - total_text_height - 40), (img.width, img.height)],
-            fill=(0, 0, 0, 128)  # Semi-transparent black
+        # Draw the text box
+        draw = ImageDraw.Draw(canvas)
+        text_box_start_y = img.height  # Start the text box below the image
+        text_box_end_y = img.height + text_box_height
+        draw.rectangle(
+            [(0, text_box_start_y), (img.width, text_box_end_y)],
+            fill=(0, 0, 0, 128),  # Semi-transparent black
         )
 
-        # Combine overlay and original image
-        img = Image.alpha_composite(img, background)
+        # Load the font
+        font = ImageFont.truetype(font_path, size=24)
 
-        # Draw the text on the image
-        draw = ImageDraw.Draw(img)
-        draw.text((x_start, img.height - total_text_height - 30), wrapped_text, font=font, fill="white")
+        # Wrap text dynamically based on the width of the text box
+        max_text_width = img.width - 2 * text_box_padding
+        lines = []
+        words = text.split()
+        current_line = []
+        for word in words:
+            test_line = " ".join(current_line + [word])
+            text_width, _ = draw.textsize(test_line, font=font)
+            if text_width <= max_text_width:
+                current_line.append(word)
+            else:
+                lines.append(" ".join(current_line))
+                current_line = [word]
+        lines.append(" ".join(current_line))  # Add the last line
 
-        # Return the final image as a NumPy array
-        return np.array(img.convert("RGB"))
+        # Calculate the total height of the wrapped text
+        text_height = sum(draw.textsize(line, font=font)[1] for line in lines)
+        total_text_y = text_box_start_y + (text_box_height - text_height) // 2  # Center the text vertically
+
+        # Draw each line of text
+        current_y = total_text_y
+        for line in lines:
+            text_width, text_height = draw.textsize(line, font=font)
+            text_x = (img.width - text_width) // 2  # Center-align text horizontally
+            draw.text((text_x, current_y), line, font=font, fill="white")
+            current_y += text_height
+
+        return np.array(canvas.convert("RGB"))
 
     except Exception as e:
         logging.error(f"Failed to add text overlay: {e}")
