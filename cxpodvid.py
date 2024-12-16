@@ -40,7 +40,7 @@ speaker_voice_map = {
 system_prompt = """
 You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. 
 Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make judgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
-The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.Make sure that, anytime, collegexpress is mentioned, it is pronounced as college express. However, at the end of the video, it should be spelled as collegexpress.
+The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). Don't be afraid to express excitement or enthusiasm, just don't overdo it. Whenever you discuss a faculty-to-student ratio like 14:1, pronounce it as 14 to 1 (or whatever the applicable true number is). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.Make sure that, anytime, collegexpress is mentioned, it is pronounced as college express. However, at the end of the video, it should be spelled as collegexpress.
 
 Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
 Only return JSON without additional text, explanations, or formatting.
@@ -93,28 +93,31 @@ from urllib.parse import urljoin
 
 def scrape_images_and_text(url):
     try:
-        # Send the request to fetch the page content
+        # Fetch the page content
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract the logo URL from the <div class="client-logo">
-        logo_div = soup.find("div", class_="client-logo")
+        # Initialize variables
         logo_url = None
 
+        # Extract the logo URL from the specific <div class="client-logo">
+        logo_div = soup.find("div", class_="client-logo")
         if logo_div and "style" in logo_div.attrs:
             style_attr = logo_div["style"]
-            # Use regex to extract the numerical ID and construct the logo URL
-            match = re.search(r"url\(['\"]?(https://.*?wg_school/(\d+)_logo\.jpg)['\"]?\)", style_attr)
+            # Extract the full logo URL from the background-image property
+            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/\d+_logo\.jpg)['\"]?\)", style_attr)
             if match:
-                logo_url = match.group(1)  # Full URL of the logo
+                logo_url = match.group(1)  # The exact logo URL is captured here
 
-        # Extract image URLs
+        # Extract all other image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = [url for url in image_urls if any(url.lower().endswith(ext) for ext in ["jpg", "jpeg", "png"])]
 
-        # Extract and truncate text
+        # Extract and truncate text from the page
         text = soup.get_text(separator=" ", strip=True)
+
+        # Return the extracted logo, valid images, and text
         return logo_url, valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
