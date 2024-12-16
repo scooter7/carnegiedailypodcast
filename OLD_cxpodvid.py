@@ -66,6 +66,9 @@ def max_words_for_duration(duration_seconds):
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, min_width=400, min_height=300):
+    """
+    Filters image URLs by checking their size and format.
+    """
     valid_images = []
     for url in image_urls:
         try:
@@ -88,10 +91,8 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-from bs4 import BeautifulSoup
-import requests
-import logging
 
+# Extract logo URL
 def extract_logo_url(soup):
     """
     Extracts the logo URL from the <div class="client-logo">.
@@ -121,6 +122,8 @@ def extract_logo_url(soup):
         logging.error(f"Error extracting logo URL: {e}")
         return None
 
+
+# Scrape images and text
 def scrape_images_and_text(url):
     """
     Scrapes the CollegeXpress page for the logo, images, and text.
@@ -237,7 +240,7 @@ def combine_audio_with_pacing(script, audio_segments):
 def add_text_overlay_on_fly(image_url, text, font_path):
     """
     Add captions to an image with proper text wrapping and a semi-transparent background.
-    Ensures text spans across the textbox width and is center-aligned.
+    Ensures text spans the full width of the video container.
     """
     try:
         # Load the image
@@ -246,8 +249,8 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
         # Define text box padding and dimensions
-        text_box_padding = 40  # Padding inside the text box
         text_box_height = 120  # Height of the text box
+        text_box_padding = 20  # Padding inside the text box
 
         # Extend the image height to add space for the text box
         canvas = Image.new("RGBA", (img.width, img.height + text_box_height), (255, 255, 255, 255))
@@ -256,46 +259,29 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         # Draw the text box
         draw = ImageDraw.Draw(canvas)
         text_box_start_y = img.height  # Start the text box below the image
-        text_box_end_y = img.height + text_box_height
         draw.rectangle(
-            [(0, text_box_start_y), (img.width, text_box_end_y)],
+            [(0, text_box_start_y), (img.width, img.height + text_box_height)],
             fill=(0, 0, 0, 128),  # Semi-transparent black
         )
 
         # Load the font
         font = ImageFont.truetype(font_path, size=28)
 
-        # Wrap text dynamically based on the width of the text box
+        # Wrap text dynamically to fit the full width of the image
         max_text_width = img.width - 2 * text_box_padding
-        lines = []
-        words = text.split()
-        current_line = []
-        for word in words:
-            test_line = " ".join(current_line + [word])
-            text_bbox = draw.textbbox((0, 0), test_line, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
-            if text_width <= max_text_width:
-                current_line.append(word)
-            else:
-                lines.append(" ".join(current_line))
-                current_line = [word]
-        lines.append(" ".join(current_line))  # Add the last line
+        lines = textwrap.wrap(text, width=max_text_width // (font.size // 2))  # Approx width calculation
 
         # Calculate the total height of the wrapped text
-        total_text_height = sum(
-            draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1]
-            for line in lines
-        )
+        total_text_height = len(lines) * font.size
         start_y = text_box_start_y + (text_box_height - total_text_height) // 2  # Center vertically
 
         # Draw each line of text
         current_y = start_y
         for line in lines:
-            text_bbox = draw.textbbox((0, 0), line, font=font)
-            text_width = text_bbox[2] - text_bbox[0]
+            text_width = draw.textlength(line, font=font)
             text_x = (img.width - text_width) // 2  # Center-align text horizontally
             draw.text((text_x, current_y), line, font=font, fill="white")
-            current_y += text_bbox[3] - text_bbox[1]
+            current_y += font.size
 
         return np.array(canvas.convert("RGB"))
 
@@ -305,91 +291,76 @@ def add_text_overlay_on_fly(image_url, text, font_path):
 
 from moviepy.video.fx.all import fadein, fadeout
 
-def create_video_with_audio(images, script, audio_segments, logo_url):
+def create_video_with_audio(images, script, audio_segments, logo_url, add_text_overlay):
     """
-    Creates a video with audio, including the dynamically scraped logo as the first image
-    and a static image at the end, with textboxes placed below each image.
+    Creates a video with audio, ensuring images and audio are included,
+    whether or not text overlays are used.
     """
     clips = []
 
-    # Add the college logo as the first image
+    # Add the logo as the first image
     try:
-        logo_overlay_image = add_text_overlay_on_fly(logo_url, "Welcome to CX Overview", local_font_path)
-        if logo_overlay_image is not None:
+        if logo_url:
+            if add_text_overlay:
+                logo_overlay_image = add_text_overlay_on_fly(logo_url, "Welcome to CX Overview", local_font_path)
+            else:
+                response = requests.get(logo_url, timeout=10)
+                response.raise_for_status()
+                logo_overlay_image = np.array(Image.open(BytesIO(response.content)))
+
             temp_logo_path = "temp_logo.png"
             Image.fromarray(logo_overlay_image).save(temp_logo_path)
 
-            # Create a silent audio clip for the logo (adjust duration as needed)
             silent_audio = AudioSegment.silent(duration=2000)  # 2 seconds of silence
             temp_audio_path = "logo_audio.mp3"
             silent_audio.export(temp_audio_path, format="mp3")
 
-            # Create MoviePy audio and image clip for the logo
             audio_clip = AudioFileClip(temp_audio_path)
             image_clip = (
                 ImageClip(temp_logo_path, duration=audio_clip.duration)
                 .set_audio(audio_clip)
                 .set_fps(24)
             )
-
-            # Add fade-in and fade-out transitions for the logo
-            image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
             clips.append(image_clip)
-        else:
-            logging.error("Logo overlay image not generated.")
     except Exception as e:
         logging.error(f"Failed to add logo as first image: {e}")
 
     # Add main content (images + script + audio)
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
         try:
-            # Fetch and process image
+            # Fetch and process the image
             response = requests.get(image_url, timeout=10)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
 
-            # Extend canvas to add text box below the image
-            text_box_height = 100  # Adjust height of text box
-            text_image = Image.new("RGBA", (img.width, img.height + text_box_height), (255, 255, 255, 255))
-            text_image.paste(img, (0, 0))  # Paste original image on top
+            # Create an image with or without text overlay
+            if add_text_overlay:
+                text_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
+            else:
+                text_image = np.array(img)
 
-            # Draw the text below the image
-            draw = ImageDraw.Draw(text_image)
-            font = ImageFont.truetype(local_font_path, size=20)
-            text = textwrap.fill(part["text"], width=50)  # Wrap text to 50 characters
-
-            # Calculate textbox position
-            text_x = 20  # Padding from left
-            text_y = img.height + 10  # Start text below the image
-            draw.text((text_x, text_y), text, fill="black", font=font)
-
-            # Save the extended image temporarily for MoviePy
+            # Save the image temporarily
             temp_img_path = f"temp_image_{idx}.png"
-            text_image.convert("RGB").save(temp_img_path)
+            Image.fromarray(text_image).save(temp_img_path)
 
-            # Save the audio temporarily for MoviePy
+            # Save the audio temporarily
             temp_audio_path = f"audio_{idx}.mp3"
             audio.export(temp_audio_path, format="mp3")
 
-            # Create MoviePy audio clip
+            # Create MoviePy audio and image clip
             audio_clip = AudioFileClip(temp_audio_path)
-
-            # Create MoviePy image clip with the same duration as the audio segment
             image_clip = (
                 ImageClip(temp_img_path, duration=audio_clip.duration)
                 .set_audio(audio_clip)
                 .set_fps(24)
             )
-
-            # Add fade-in and fade-out transitions
-            image_clip = fadein(image_clip, 0.5).fx(fadeout, 0.5)
             clips.append(image_clip)
 
         except Exception as e:
             logging.error(f"Failed to process main content image: {image_url}. Error: {e}")
             continue
 
-    # Add the static CX Overview image at the end
+    # Add a static end image
     try:
         cx_image_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg"
         response = requests.get(cx_image_url, timeout=10)
@@ -398,21 +369,16 @@ def create_video_with_audio(images, script, audio_segments, logo_url):
         temp_cx_path = "temp_cx_image.png"
         cx_image.save(temp_cx_path)
 
-        # Add silent audio for the static image
         silent_audio = AudioSegment.silent(duration=3000)  # 3 seconds of silence
         temp_cx_audio_path = "cx_audio.mp3"
         silent_audio.export(temp_cx_audio_path, format="mp3")
 
-        # Create MoviePy audio and image clip for the CX Overview image
         cx_audio_clip = AudioFileClip(temp_cx_audio_path)
         cx_image_clip = (
             ImageClip(temp_cx_path, duration=cx_audio_clip.duration)
-                .set_audio(cx_audio_clip)
-                .set_fps(24)
+            .set_audio(cx_audio_clip)
+            .set_fps(24)
         )
-
-        # Add fade-in and fade-out transitions
-        cx_image_clip = fadein(cx_image_clip, 0.5).fx(fadeout, 0.5)
         clips.append(cx_image_clip)
 
     except Exception as e:
@@ -423,10 +389,10 @@ def create_video_with_audio(images, script, audio_segments, logo_url):
         logging.error("No valid video clips could be created.")
         return None
 
-    # Concatenate video clips into the final video
+    # Concatenate all clips into the final video
     final_video = concatenate_videoclips(clips, method="compose")
 
-    # Write final video to file
+    # Write the final video to file
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
@@ -437,6 +403,9 @@ st.title("CX Podcast and Video Generator")
 
 # URL input for scraping text and images
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
+
+# Checkbox to toggle text overlays
+add_text_overlay = st.checkbox("Add text overlays to video", value=True)
 
 # New field to allow manual entry of the logo URL
 logo_url_input = st.text_input(
@@ -467,6 +436,14 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
+                    # Always create and save the script file
+                    script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
+                    script_file = "conversation_script.txt"
+                    with open(script_file, "w") as f:
+                        f.write(script_text)
+                    # Provide script download button
+                    st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
+
                     # Generate audio segments with proper pacing
                     audio_segments = [
                         synthesize_cloned_voice_with_pacing(part["text"], part["speaker"])
@@ -482,17 +459,18 @@ if st.button("Generate Content"):
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
-                        # Create script file
-                        script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
-                        script_file = "conversation_script.txt"
-                        with open(script_file, "w") as f:
-                            f.write(script_text)
-                        st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
-
-                        # Create the video with the logo
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, logo_url)
+                        # Create the video with optional text overlays
+                        video_file = create_video_with_audio(
+                            filtered_images, conversation_script, audio_segments, logo_url, add_text_overlay
+                        )
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
                         else:
                             st.error("Failed to create video.")
+                    else:
+                        st.error("Failed to generate audio.")
+                else:
+                    st.error("Failed to generate conversation script.")
+        else:
+            st.error("Failed to extract content from the URL.")
