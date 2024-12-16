@@ -229,7 +229,7 @@ from moviepy.video.fx.all import fadein, fadeout
 def create_video_with_audio(images, script, audio_segments, logo_url):
     """
     Creates a video with audio, including the dynamically scraped logo as the first image
-    and a static image at the end, with textboxes below each image for consistent text size.
+    and a static image at the end, with textboxes placed below each image.
     """
     clips = []
 
@@ -269,20 +269,22 @@ def create_video_with_audio(images, script, audio_segments, logo_url):
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
 
-            # Add a consistent-width textbox below the image
-            text_image = Image.new("RGBA", (img.width, img.height + 50), (255, 255, 255, 255))  # Extend height for text
+            # Extend canvas to add text box below the image
+            text_box_height = 100  # Adjust height of text box
+            text_image = Image.new("RGBA", (img.width, img.height + text_box_height), (255, 255, 255, 255))
             text_image.paste(img, (0, 0))  # Paste original image on top
 
+            # Draw the text below the image
             draw = ImageDraw.Draw(text_image)
             font = ImageFont.truetype(local_font_path, size=20)
             text = textwrap.fill(part["text"], width=50)  # Wrap text to 50 characters
 
             # Calculate textbox position
-            text_x = 10  # Padding from left
+            text_x = 20  # Padding from left
             text_y = img.height + 10  # Start text below the image
             draw.text((text_x, text_y), text, fill="black", font=font)
 
-            # Save the overlay image temporarily for MoviePy
+            # Save the extended image temporarily for MoviePy
             temp_img_path = f"temp_image_{idx}.png"
             text_image.convert("RGB").save(temp_img_path)
 
@@ -326,8 +328,8 @@ def create_video_with_audio(images, script, audio_segments, logo_url):
         cx_audio_clip = AudioFileClip(temp_cx_audio_path)
         cx_image_clip = (
             ImageClip(temp_cx_path, duration=cx_audio_clip.duration)
-            .set_audio(cx_audio_clip)
-            .set_fps(24)
+                .set_audio(cx_audio_clip)
+                .set_fps(24)
         )
 
         # Add fade-in and fade-out transitions
