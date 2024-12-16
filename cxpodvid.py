@@ -193,7 +193,7 @@ def generate_script(enriched_text, max_words):
 # Synthesize speech with ElevenLabs
 from pydub import AudioSegment
 
-def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=2000):
+def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=500):
     """
     Synthesizes voice for a speaker with a pause after each sentence.
     """
@@ -229,7 +229,7 @@ def combine_audio_with_pacing(script, audio_segments):
 
         # Add extra silence between speakers
         if idx < len(script) - 1:  # Avoid adding silence after the last speaker
-            combined_audio += AudioSegment.silent(duration=1000)  # 1 second of silence
+            combined_audio += AudioSegment.silent(duration=500)  # half second of silence
 
     return combined_audio
 
