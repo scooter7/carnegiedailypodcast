@@ -229,7 +229,7 @@ def combine_audio_with_pacing(script, audio_segments):
 
         # Add extra silence between speakers
         if idx < len(script) - 1:  # Avoid adding silence after the last speaker
-            combined_audio += AudioSegment.silent(duration=2000)  # 2 seconds of silence
+            combined_audio += AudioSegment.silent(duration=1000)  # 1 second of silence
 
     return combined_audio
 
