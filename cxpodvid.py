@@ -418,8 +418,6 @@ if st.button("Generate Content"):
                         with open(script_file, "w") as f:
                             f.write(script_text)
 
-                        st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
-
                         video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, logo_url)
                         if video_file:
                             st.video(video_file)
