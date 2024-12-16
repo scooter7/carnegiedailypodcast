@@ -65,7 +65,10 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid image formats and URLs
-def filter_valid_images(image_urls, min_width=400, min_height=300):
+def filter_valid_images(image_urls, min_width=200, min_height=150):
+    """
+    Filters valid images based on minimum dimensions and ensures they are in valid formats.
+    """
     valid_images = []
     for url in image_urls:
         try:
@@ -73,16 +76,11 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
 
-            # Skip small or greyscale images
-            if img.width < min_width or img.height < min_height:
-                logging.warning(f"Skipping small image: {url} ({img.width}x{img.height})")
-                continue
-            if img.mode not in ["RGB", "RGBA"]:
-                logging.warning(f"Skipping non-RGB image: {url} (mode: {img.mode})")
-                continue
-
-            # Append valid image URL
-            valid_images.append(url)
+            # Skip very small or non-RGB images
+            if img.width >= min_width and img.height >= min_height and img.mode in ["RGB", "RGBA"]:
+                valid_images.append(url)
+            else:
+                logging.warning(f"Image skipped due to size or mode: {url} ({img.width}x{img.height}, mode={img.mode})")
         except Exception as e:
             logging.warning(f"Error processing image: {url}, Error: {e}")
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
@@ -134,14 +132,14 @@ def scrape_images_and_text(url):
         # Extract the logo URL
         logo_url = extract_logo_url(soup)
 
-        # Extract other image URLs
-        image_urls = [img["src"] for img in soup.find_all("img", src=True)]
-        valid_images = [img for img in image_urls if img.endswith((".jpg", ".jpeg", ".png"))]
+        # Extract other image URLs and resolve relative paths
+        image_tags = soup.find_all("img", src=True)
+        image_urls = [urljoin(url, img["src"]) for img in image_tags]
 
         # Extract and truncate text from the page
         text = soup.get_text(separator=" ", strip=True)
 
-        return logo_url, valid_images, text[:5000]
+        return logo_url, image_urls, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
         return None, [], ""
@@ -290,8 +288,7 @@ from moviepy.video.fx.all import fadein, fadeout
 
 def create_video_with_audio(images, script, audio_segments, logo_url, add_text_overlay):
     """
-    Creates a video with audio, ensuring images from the page scrape are included,
-    text overlays are optional, and video matches the podcast duration.
+    Creates a video with audio, ensuring images and audio are synchronized.
     """
     clips = []
 
@@ -354,7 +351,7 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
             logging.error(f"Failed to process main content image: {image_url}. Error: {e}")
             continue
 
-    # Add the static CX Overview image at the end
+    # Add a static image at the end
     try:
         cx_image_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg"
         response = requests.get(cx_image_url, timeout=10)
