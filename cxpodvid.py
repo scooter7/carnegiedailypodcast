@@ -95,23 +95,24 @@ def scrape_images_and_text(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
+        # Extract the logo URL from the <div> with class "client-logo"
+        logo_div = soup.find("div", class_="client-logo")
+        logo_url = None
+        if logo_div and "style" in logo_div.attrs:
+            style_attr = logo_div["style"]
+            if "background-image" in style_attr:
+                logo_url = style_attr.split("url('")[1].split("')")[0]
+
         # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = [url for url in image_urls if any(url.lower().endswith(ext) for ext in ["jpg", "jpeg", "png"])]
 
-        # Extract college logo
-        logo_div = soup.find("div", class_="client-logo")
-        logo_url = None
-        if logo_div and "background-image" in logo_div.attrs.get("style", ""):
-            style_content = logo_div["style"]
-            logo_url = style_content.split("url('")[1].split("')")[0]
-
         # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        return valid_images, logo_url, text[:5000]
+        return logo_url, valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
-        return [], None, ""
+        return None, [], ""
 
 # Summarize content using OpenAI
 def summarize_content(text):
@@ -360,15 +361,11 @@ if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        images, logo_url, text = scrape_images_and_text(url_input.strip())
+        logo_url, images, text = scrape_images_and_text(url_input.strip())
         filtered_images = filter_valid_images(images)
 
-        # Prepend the logo to the filtered images
-        if logo_url:
-            filtered_images.insert(0, logo_url)
-
-        # Add the static final image
-        filtered_images.append("https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg")
+        if not logo_url:
+            st.warning("No logo found for this page. Skipping logo addition.")
 
         if text:
             summary = summarize_content(text)
@@ -393,7 +390,7 @@ if st.button("Generate Content"):
 
                         st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
-                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments)
+                        video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, logo_url)
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
