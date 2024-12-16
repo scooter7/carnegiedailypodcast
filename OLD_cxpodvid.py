@@ -193,7 +193,7 @@ def generate_script(enriched_text, max_words):
 # Synthesize speech with ElevenLabs
 from pydub import AudioSegment
 
-def synthesize_cloned_voice(text, speaker, pause_duration=2000):
+def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=2000):
     """
     Synthesizes voice for a speaker with a pause after each sentence.
     """
@@ -434,41 +434,62 @@ def create_video_with_audio(images, script, audio_segments, logo_url):
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
+
+# URL input for scraping text and images
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
 
+# New field to allow manual entry of the logo URL
+logo_url_input = st.text_input(
+    "Enter the Logo URL (optional):",
+    placeholder="Enter the full URL of the logo image (e.g., https://images.collegexpress.com/wg_school/12345_logo.jpg)",
+)
+
+# Duration selection
 duration = st.radio("Select Duration (seconds)", [15, 30, 45, 60], index=0)
 
 if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        logo_url, images, text = scrape_images_and_text(url_input.strip())
+        # Scrape images and text from the provided URL
+        scraped_logo_url, images, text = scrape_images_and_text(url_input.strip())
         filtered_images = filter_valid_images(images)
 
+        # Use the manually entered logo URL if provided; otherwise, fallback to scraped logo
+        logo_url = logo_url_input.strip() or scraped_logo_url
         if not logo_url:
-            st.warning("No logo found for this page. Skipping logo addition.")
+            st.warning("No logo URL provided or found. Skipping logo addition.")
 
         if text:
+            # Summarize content
             summary = summarize_content(text)
             if summary:
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
-                    audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
+                    # Generate audio segments with proper pacing
+                    audio_segments = [
+                        synthesize_cloned_voice_with_pacing(part["text"], part["speaker"])
+                        for part in conversation_script
+                    ]
                     audio_segments = [audio for audio in audio_segments if audio]
 
                     if audio_segments:
-                        combined_audio = sum(audio_segments, AudioSegment.empty())
+                        # Combine audio with pacing
+                        combined_audio = combine_audio_with_pacing(conversation_script, audio_segments)
                         podcast_file = "podcast.mp3"
                         combined_audio.export(podcast_file, format="mp3")
                         st.audio(podcast_file)
                         st.download_button("Download Podcast", open(podcast_file, "rb"), file_name="podcast.mp3")
 
+                        # Create script file
                         script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
                         script_file = "conversation_script.txt"
                         with open(script_file, "w") as f:
                             f.write(script_text)
+                        st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
 
+                        # Create the video with the logo
                         video_file = create_video_with_audio(filtered_images, conversation_script, audio_segments, logo_url)
                         if video_file:
                             st.video(video_file)
