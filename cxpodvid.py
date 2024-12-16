@@ -88,7 +88,7 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-# Scrape images and text from a URL
+# Scrape images, logo, and text from a URL
 def scrape_images_and_text(url):
     try:
         response = requests.get(url, timeout=10)
@@ -99,12 +99,19 @@ def scrape_images_and_text(url):
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
         valid_images = [url for url in image_urls if any(url.lower().endswith(ext) for ext in ["jpg", "jpeg", "png"])]
 
+        # Extract college logo
+        logo_div = soup.find("div", class_="client-logo")
+        logo_url = None
+        if logo_div and "background-image" in logo_div.attrs.get("style", ""):
+            style_content = logo_div["style"]
+            logo_url = style_content.split("url('")[1].split("')")[0]
+
         # Extract and truncate text
         text = soup.get_text(separator=" ", strip=True)
-        return valid_images, text[:5000]
+        return valid_images, logo_url, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
-        return [], ""
+        return [], None, ""
 
 # Summarize content using OpenAI
 def summarize_content(text):
@@ -221,6 +228,18 @@ from moviepy.video.fx.all import fadein, fadeout
 def create_video_with_audio(images, script, audio_segments):
     clips = []
 
+    # Add the college logo as the first image
+    logo_url = "https://images.collegexpress.com/wg_school/1100456_logo.jpg"  # Placeholder; dynamically update this based on scrape
+    logo_overlay_image = add_text_overlay_on_fly(logo_url, "Welcome to CX Overview", local_font_path)
+    if logo_overlay_image is not None:
+        temp_logo_path = "temp_logo.png"
+        Image.fromarray(logo_overlay_image).save(temp_logo_path)
+
+        # Create a clip for the logo
+        logo_clip = ImageClip(temp_logo_path, duration=3).set_fps(24)  # Show for 3 seconds
+        clips.append(logo_clip)
+
+    # Add main content images with audio
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
         # Add text overlay to the image
         overlay_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
@@ -251,6 +270,17 @@ def create_video_with_audio(images, script, audio_segments):
 
         clips.append(image_clip)
 
+    # Add the static ending image (cx.jpg)
+    ending_image_url = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
+    ending_overlay_image = add_text_overlay_on_fly(ending_image_url, "Thank you for watching!", local_font_path)
+    if ending_overlay_image is not None:
+        temp_ending_path = "temp_ending.png"
+        Image.fromarray(ending_overlay_image).save(temp_ending_path)
+
+        # Create a clip for the ending image
+        ending_clip = ImageClip(temp_ending_path, duration=3).set_fps(24)  # Show for 3 seconds
+        clips.append(ending_clip)
+
     # Ensure there are valid clips
     if not clips:
         logging.error("No valid video clips could be created.")
@@ -275,8 +305,15 @@ if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        images, text = scrape_images_and_text(url_input.strip())
+        images, logo_url, text = scrape_images_and_text(url_input.strip())
         filtered_images = filter_valid_images(images)
+
+        # Prepend the logo to the filtered images
+        if logo_url:
+            filtered_images.insert(0, logo_url)
+
+        # Add the static final image
+        filtered_images.append("https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg")
 
         if text:
             summary = summarize_content(text)
@@ -305,5 +342,8 @@ if st.button("Generate Content"):
                         if video_file:
                             st.video(video_file)
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
+                        else:
+                            st.error("Failed to create video.")
+
                         else:
                             st.error("Failed to create video.")
