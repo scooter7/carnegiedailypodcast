@@ -223,7 +223,8 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         current_line = []
         for word in words:
             test_line = " ".join(current_line + [word])
-            text_width, _ = draw.textsize(test_line, font=font)
+            text_bbox = draw.textbbox((0, 0), test_line, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
             if text_width <= max_text_width:
                 current_line.append(word)
             else:
@@ -232,16 +233,17 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         lines.append(" ".join(current_line))  # Add the last line
 
         # Calculate the total height of the wrapped text
-        text_height = sum(draw.textsize(line, font=font)[1] for line in lines)
+        text_height = sum(draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] for line in lines)
         total_text_y = text_box_start_y + (text_box_height - text_height) // 2  # Center the text vertically
 
         # Draw each line of text
         current_y = total_text_y
         for line in lines:
-            text_width, text_height = draw.textsize(line, font=font)
+            text_bbox = draw.textbbox((0, 0), line, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
             text_x = (img.width - text_width) // 2  # Center-align text horizontally
             draw.text((text_x, current_y), line, font=font, fill="white")
-            current_y += text_height
+            current_y += text_bbox[3] - text_bbox[1]
 
         return np.array(canvas.convert("RGB"))
 
