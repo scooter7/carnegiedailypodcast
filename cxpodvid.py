@@ -103,10 +103,10 @@ def scrape_images_and_text(url):
         logo_url = None
         if logo_div and "style" in logo_div.attrs:
             style_attr = logo_div["style"]
-            # Extract the full logo URL from the background-image property
-            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/\d+_logo\.jpg)['\"]?\)", style_attr)
+            # Extract the numerical ID and construct the logo URL
+            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/(\d+)_logo\.jpg)['\"]?\)", style_attr)
             if match:
-                logo_url = match.group(1)  # Extract the exact logo URL
+                logo_url = match.group(1)  # Full logo URL is captured
 
         # Extract other image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
