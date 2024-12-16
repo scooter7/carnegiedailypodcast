@@ -436,6 +436,14 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
+                    # Always create and save the script file
+                    script_text = "\n\n".join([f"{part['speaker']}: {part['text']}" for part in conversation_script])
+                    script_file = "conversation_script.txt"
+                    with open(script_file, "w") as f:
+                        f.write(script_text)
+                    # Provide script download button
+                    st.download_button("Download Script", open(script_file, "rb"), file_name="conversation_script.txt")
+
                     # Generate audio segments with proper pacing
                     audio_segments = [
                         synthesize_cloned_voice_with_pacing(part["text"], part["speaker"])
@@ -460,3 +468,9 @@ if st.button("Generate Content"):
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
                         else:
                             st.error("Failed to create video.")
+                    else:
+                        st.error("Failed to generate audio.")
+                else:
+                    st.error("Failed to generate conversation script.")
+        else:
+            st.error("Failed to extract content from the URL.")
