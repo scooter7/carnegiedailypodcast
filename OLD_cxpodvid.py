@@ -98,14 +98,12 @@ def scrape_images_and_text(url):
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Initialize variables
-        logo_url = None
-
         # Extract the logo URL from <div class="client-logo">
         logo_div = soup.find("div", class_="client-logo")
+        logo_url = None
         if logo_div and "style" in logo_div.attrs:
             style_attr = logo_div["style"]
-            # Use regex to extract the URL from the style attribute
+            # Extract the full logo URL from the background-image property
             match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/\d+_logo\.jpg)['\"]?\)", style_attr)
             if match:
                 logo_url = match.group(1)  # Extract the exact logo URL
@@ -197,8 +195,8 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         img = Image.open(BytesIO(response.content)).convert("RGBA")
 
         # Define text box padding and dimensions
-        text_box_padding = 20  # Padding inside the text box
-        text_box_height = 100  # Height of the text box
+        text_box_padding = 40  # Padding inside the text box
+        text_box_height = 120  # Height of the text box
 
         # Extend the image height to add space for the text box
         canvas = Image.new("RGBA", (img.width, img.height + text_box_height), (255, 255, 255, 255))
@@ -214,7 +212,7 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         )
 
         # Load the font
-        font = ImageFont.truetype(font_path, size=24)
+        font = ImageFont.truetype(font_path, size=28)
 
         # Wrap text dynamically based on the width of the text box
         max_text_width = img.width - 2 * text_box_padding
@@ -233,11 +231,14 @@ def add_text_overlay_on_fly(image_url, text, font_path):
         lines.append(" ".join(current_line))  # Add the last line
 
         # Calculate the total height of the wrapped text
-        text_height = sum(draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] for line in lines)
-        total_text_y = text_box_start_y + (text_box_height - text_height) // 2  # Center the text vertically
+        total_text_height = sum(
+            draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1]
+            for line in lines
+        )
+        start_y = text_box_start_y + (text_box_height - total_text_height) // 2  # Center vertically
 
         # Draw each line of text
-        current_y = total_text_y
+        current_y = start_y
         for line in lines:
             text_bbox = draw.textbbox((0, 0), line, font=font)
             text_width = text_bbox[2] - text_bbox[0]
