@@ -344,6 +344,3 @@ if st.button("Generate Content"):
                             st.download_button("Download Video", open(video_file, "rb"), file_name="video_with_audio.mp4")
                         else:
                             st.error("Failed to create video.")
-
-                        else:
-                            st.error("Failed to create video.")
