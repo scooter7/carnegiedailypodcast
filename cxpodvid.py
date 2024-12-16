@@ -193,7 +193,7 @@ def generate_script(enriched_text, max_words):
 # Synthesize speech with ElevenLabs
 from pydub import AudioSegment
 
-def synthesize_cloned_voice(text, speaker, pause_duration=2000):
+def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=2000):
     """
     Synthesizes voice for a speaker with a pause after each sentence.
     """
@@ -454,11 +454,16 @@ if st.button("Generate Content"):
                 max_words = max_words_for_duration(duration)
                 conversation_script = generate_script(summary, max_words)
                 if conversation_script:
-                    audio_segments = [synthesize_cloned_voice(part["text"], part["speaker"]) for part in conversation_script]
+                    # Generate audio with pacing
+                    audio_segments = [
+                        synthesize_cloned_voice_with_pacing(part["text"], part["speaker"]) 
+                        for part in conversation_script
+                    ]
                     audio_segments = [audio for audio in audio_segments if audio]
 
                     if audio_segments:
-                        combined_audio = sum(audio_segments, AudioSegment.empty())
+                        # Combine audio with proper pacing
+                        combined_audio = combine_audio_with_pacing(conversation_script, audio_segments)
                         podcast_file = "podcast.mp3"
                         combined_audio.export(podcast_file, format="mp3")
                         st.audio(podcast_file)
