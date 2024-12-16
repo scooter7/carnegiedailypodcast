@@ -193,7 +193,7 @@ def generate_script(enriched_text, max_words):
 # Synthesize speech with ElevenLabs
 from pydub import AudioSegment
 
-def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=2000):
+def synthesize_cloned_voice(text, speaker, pause_duration=2000):
     """
     Synthesizes voice for a speaker with a pause after each sentence.
     """
