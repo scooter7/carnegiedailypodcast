@@ -88,34 +88,59 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-import re
-from urllib.parse import urljoin
+from bs4 import BeautifulSoup
+import requests
+import logging
+
+def extract_logo_url(soup):
+    """
+    Extracts the logo URL from the <div class="client-logo">.
+    """
+    try:
+        # Find the client-logo div
+        logo_div = soup.find("div", class_="client-logo")
+        if not logo_div or "style" not in logo_div.attrs:
+            logging.warning("Logo div or style attribute not found.")
+            return None
+
+        # Extract the style attribute
+        style_attr = logo_div["style"]
+
+        # Look for the background-image URL
+        start_index = style_attr.find("url('") + 5
+        end_index = style_attr.find("')", start_index)
+        logo_url = style_attr[start_index:end_index]
+
+        # Validate the logo URL
+        if not logo_url.startswith("https://images.collegexpress.com/wg_school/"):
+            logging.warning("Invalid logo URL format.")
+            return None
+
+        return logo_url
+    except Exception as e:
+        logging.error(f"Error extracting logo URL: {e}")
+        return None
 
 def scrape_images_and_text(url):
+    """
+    Scrapes the CollegeXpress page for the logo, images, and text.
+    """
     try:
         # Fetch the page content
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract the logo URL from <div class="client-logo">
-        logo_div = soup.find("div", class_="client-logo")
-        logo_url = None
-        if logo_div and "style" in logo_div.attrs:
-            style_attr = logo_div["style"]
-            # Extract the numerical ID and construct the logo URL
-            match = re.search(r"url\(['\"]?(https://[^'\"]+wg_school/(\d+)_logo\.jpg)['\"]?\)", style_attr)
-            if match:
-                logo_url = match.group(1)  # Full logo URL is captured
+        # Extract the logo URL
+        logo_url = extract_logo_url(soup)
 
         # Extract other image URLs
-        image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
-        valid_images = [url for url in image_urls if any(url.lower().endswith(ext) for ext in ["jpg", "jpeg", "png"])]
+        image_urls = [img["src"] for img in soup.find_all("img", src=True)]
+        valid_images = [img for img in image_urls if img.endswith((".jpg", ".jpeg", ".png"))]
 
         # Extract and truncate text from the page
         text = soup.get_text(separator=" ", strip=True)
 
-        # Return the extracted logo, valid images, and text
         return logo_url, valid_images, text[:5000]
     except Exception as e:
         logging.error(f"Error scraping content from {url}: {e}")
@@ -166,21 +191,47 @@ def generate_script(enriched_text, max_words):
         return []
 
 # Synthesize speech with ElevenLabs
-def synthesize_cloned_voice(text, speaker):
+from pydub import AudioSegment
+
+def synthesize_cloned_voice_with_pacing(text, speaker, pause_duration=2000):
+    """
+    Synthesizes voice for a speaker with a pause after each sentence.
+    """
     try:
+        # Generate the speech audio
         audio_generator = elevenlabs_client.generate(
             text=text,
             voice=speaker_voice_map[speaker],
             model="eleven_multilingual_v2"
         )
         audio_content = b"".join(audio_generator)
-        temp_audio_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-        with open(temp_audio_file.name, "wb") as f:
-            f.write(audio_content)
-        return AudioSegment.from_file(temp_audio_file.name)
+
+        # Create an AudioSegment object
+        audio = AudioSegment.from_file(BytesIO(audio_content), format="mp3")
+
+        # Add a pause at the end of the audio
+        pause = AudioSegment.silent(duration=pause_duration)
+        return audio + pause
+
     except Exception as e:
         logging.error(f"Error synthesizing speech for {speaker}: {e}")
         return None
+
+def combine_audio_with_pacing(script, audio_segments):
+    """
+    Combines the audio segments of all speakers with natural pacing.
+    """
+    combined_audio = AudioSegment.empty()
+
+    for idx, (part, audio) in enumerate(zip(script, audio_segments)):
+        # Add the current speaker's audio
+        combined_audio += audio
+
+        # Add extra silence between speakers
+        if idx < len(script) - 1:  # Avoid adding silence after the last speaker
+            combined_audio += AudioSegment.silent(duration=2000)  # 2 seconds of silence
+
+    return combined_audio
 
 # Add text overlay to an image
 def add_text_overlay_on_fly(image_url, text, font_path):
