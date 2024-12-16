@@ -88,20 +88,26 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-# Scrape images, logo, and text from a URL
+import re
+from urllib.parse import urljoin
+
 def scrape_images_and_text(url):
     try:
+        # Send the request to fetch the page content
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Extract the logo URL from the <div> with class "client-logo"
+        # Extract the logo URL from the <div class="client-logo">
         logo_div = soup.find("div", class_="client-logo")
         logo_url = None
+
         if logo_div and "style" in logo_div.attrs:
             style_attr = logo_div["style"]
-            if "background-image" in style_attr:
-                logo_url = style_attr.split("url('")[1].split("')")[0]
+            # Use regex to extract the numerical ID and construct the logo URL
+            match = re.search(r"url\(['\"]?(https://.*?wg_school/(\d+)_logo\.jpg)['\"]?\)", style_attr)
+            if match:
+                logo_url = match.group(1)  # Full URL of the logo
 
         # Extract image URLs
         image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
