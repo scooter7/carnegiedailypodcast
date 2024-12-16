@@ -296,11 +296,12 @@ from moviepy.video.fx.all import fadein, fadeout
 
 def create_video_with_audio(images, script, audio_segments, logo_url, add_text_overlay):
     """
-    Creates a video with audio, including optional text overlays and the dynamically scraped logo.
+    Creates a video with audio, ensuring the video duration matches the podcast duration.
+    Adds optional text overlays and dynamically scraped logo.
     """
     clips = []
 
-    # Add the college logo as the first image
+    # Add the college logo as the first image (optional overlay)
     try:
         if logo_url and add_text_overlay:
             logo_overlay_image = add_text_overlay_on_fly(logo_url, "Welcome to CX Overview", local_font_path, full_width=1920)
@@ -327,10 +328,12 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
     # Add main content (images + script + audio)
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
         try:
+            # Fetch and process image
             response = requests.get(image_url, timeout=10)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
 
+            # Determine image path (with or without overlay)
             if add_text_overlay:
                 text_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path, full_width=1920)
                 temp_img_path = f"temp_image_{idx}.png"
@@ -339,12 +342,14 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
                 temp_img_path = f"temp_image_{idx}.png"
                 img.save(temp_img_path)
 
+            # Save audio temporarily
             temp_audio_path = f"audio_{idx}.mp3"
             audio.export(temp_audio_path, format="mp3")
 
+            # Create audio and image clips
             audio_clip = AudioFileClip(temp_audio_path)
             image_clip = (
-                ImageClip(temp_img_path, duration=audio_clip.duration)
+                ImageClip(temp_img_path, duration=audio_clip.duration)  # Match audio duration
                 .set_audio(audio_clip)
                 .set_fps(24)
             )
@@ -355,7 +360,7 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
             logging.error(f"Failed to process main content image: {image_url}. Error: {e}")
             continue
 
-    # Add static CX Overview image
+    # Add a static CX Overview image at the end
     try:
         cx_image_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg"
         response = requests.get(cx_image_url, timeout=10)
@@ -380,12 +385,19 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
     except Exception as e:
         logging.error(f"Failed to add CX Overview image: {e}")
 
-    # Concatenate video clips
+    # Ensure there are valid clips
     if not clips:
         logging.error("No valid video clips could be created.")
         return None
 
+    # Concatenate all clips into the final video
     final_video = concatenate_videoclips(clips, method="compose")
+
+    # Ensure final video duration matches podcast
+    podcast_duration = sum(audio.duration_seconds for audio in audio_segments)
+    final_video = final_video.set_duration(podcast_duration)
+
+    # Write final video to file
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
