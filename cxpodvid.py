@@ -66,6 +66,9 @@ def max_words_for_duration(duration_seconds):
 
 # Filter valid image formats and URLs
 def filter_valid_images(image_urls, min_width=400, min_height=300):
+    """
+    Filters image URLs by checking their size and format.
+    """
     valid_images = []
     for url in image_urls:
         try:
@@ -88,10 +91,8 @@ def filter_valid_images(image_urls, min_width=400, min_height=300):
     logging.info(f"Filtered valid images: {len(valid_images)} out of {len(image_urls)}")
     return valid_images
 
-from bs4 import BeautifulSoup
-import requests
-import logging
 
+# Extract logo URL
 def extract_logo_url(soup):
     """
     Extracts the logo URL from the <div class="client-logo">.
@@ -121,6 +122,8 @@ def extract_logo_url(soup):
         logging.error(f"Error extracting logo URL: {e}")
         return None
 
+
+# Scrape images and text
 def scrape_images_and_text(url):
     """
     Scrapes the CollegeXpress page for the logo, images, and text.
@@ -290,11 +293,12 @@ from moviepy.video.fx.all import fadein, fadeout
 
 def create_video_with_audio(images, script, audio_segments, logo_url, add_text_overlay):
     """
-    Creates a video with audio, ensuring images and audio are synchronized.
+    Creates a video with audio, ensuring images and audio are included,
+    whether or not text overlays are used.
     """
     clips = []
 
-    # Add the college logo as the first image
+    # Add the logo as the first image
     try:
         if logo_url:
             if add_text_overlay:
@@ -307,7 +311,6 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
             temp_logo_path = "temp_logo.png"
             Image.fromarray(logo_overlay_image).save(temp_logo_path)
 
-            # Create a silent audio clip for the logo
             silent_audio = AudioSegment.silent(duration=2000)  # 2 seconds of silence
             temp_audio_path = "logo_audio.mp3"
             silent_audio.export(temp_audio_path, format="mp3")
@@ -325,22 +328,26 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
     # Add main content (images + script + audio)
     for idx, (image_url, part, audio) in enumerate(zip(images, script, audio_segments)):
         try:
-            # Fetch and process image
+            # Fetch and process the image
             response = requests.get(image_url, timeout=10)
             response.raise_for_status()
             img = Image.open(BytesIO(response.content))
 
+            # Create an image with or without text overlay
             if add_text_overlay:
                 text_image = add_text_overlay_on_fly(image_url, part["text"], local_font_path)
             else:
-                text_image = np.array(img)  # Use the image without text overlay
+                text_image = np.array(img)
 
+            # Save the image temporarily
             temp_img_path = f"temp_image_{idx}.png"
             Image.fromarray(text_image).save(temp_img_path)
 
+            # Save the audio temporarily
             temp_audio_path = f"audio_{idx}.mp3"
             audio.export(temp_audio_path, format="mp3")
 
+            # Create MoviePy audio and image clip
             audio_clip = AudioFileClip(temp_audio_path)
             image_clip = (
                 ImageClip(temp_img_path, duration=audio_clip.duration)
@@ -353,7 +360,7 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
             logging.error(f"Failed to process main content image: {image_url}. Error: {e}")
             continue
 
-    # Add a static image at the end
+    # Add a static end image
     try:
         cx_image_url = "https://github.com/scooter7/carnegiedailypodcast/raw/main/cx.jpg"
         response = requests.get(cx_image_url, timeout=10)
@@ -385,7 +392,7 @@ def create_video_with_audio(images, script, audio_segments, logo_url, add_text_o
     # Concatenate all clips into the final video
     final_video = concatenate_videoclips(clips, method="compose")
 
-    # Write final video to file
+    # Write the final video to file
     final_video_path = "final_video.mp4"
     final_video.write_videofile(final_video_path, codec="libx264", fps=24, audio_codec="aac")
 
