@@ -33,8 +33,12 @@ speaker_voice_map = {
 
 # System prompt for OpenAI
 system_prompt = """
-You are a podcast host for 'CX Overview.' Generate a robust, fact-based conversation between Ali and Lisa...
-"""
+You are a podcast host for 'CX Overview.' Generate a robust, fact-based, news-oriented conversation between Ali and Lisa. Make sure that the voices are excited and enthusiastic, not flat and overly matter-of-fact.
+Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. When mentioning tuition, never make judgmental statements about the cost being high; instead, try to focus on financial aid and scholarship opportunities. 
+The conversation should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know' (Do not overdo the pauses and fillers, though). Whenever you discuss a faculty-to-student ratio like 14:1, pronounce it as 14 to 1 (or whatever the applicable true number is). At the end of the podcast, always mention that more information about the school can be found at collegexpress.com.Make sure that, anytime, collegexpress is mentioned, it is pronounced as college express. However, at the end of the video, it should be spelled as collegexpress.
+
+Format the response **strictly** as a JSON array of objects, each with 'speaker' and 'text' keys. 
+Only return JSON without additional text, explanations, or formatting.
 
 # Cached font download
 @st.cache_resource
