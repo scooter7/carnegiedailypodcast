@@ -161,24 +161,53 @@ def add_text_overlay(image_url, text, font_path):
 
 # Create video with audio
 def create_video(filtered_images, script, audio_segments, logo_url, add_overlay):
+    """
+    Create a video from images, script, and audio.
+    """
     clips = []
+
+    # Add logo as the first clip
     if logo_url:
-        logo_image = Image.open(requests.get(logo_url, stream=True).raw)
-        logo_clip = ImageClip(np.array(logo_image), duration=2).set_fps(24)
-        clips.append(logo_clip)
+        try:
+            logo_image = Image.open(requests.get(logo_url, stream=True).raw)
+            logo_clip = ImageClip(np.array(logo_image), duration=2).set_fps(24)
+            clips.append(logo_clip)
+        except Exception as e:
+            logging.warning(f"Error loading logo image: {e}")
+
+    # Process each image and audio
     for idx, (image_url, part, audio) in enumerate(zip(filtered_images, script, audio_segments)):
-        if add_overlay:
-            img = add_text_overlay(image_url, part['text'], local_font_path)
-        else:
-            img = Image.open(requests.get(image_url, stream=True).raw)
-        temp_img_path = f"temp_image_{idx}.png"
-        Image.fromarray(img).save(temp_img_path)
-        audio.export(f"audio_{idx}.mp3", format="mp3")
-        clip = ImageClip(temp_img_path, duration=audio.duration_seconds).set_audio(AudioFileClip(f"audio_{idx}.mp3"))
-        clips.append(clip)
-    final_video = concatenate_videoclips(clips, method="compose")
-    final_video.write_videofile("final_video.mp4", codec="libx264", fps=24, audio_codec="aac")
-    return "final_video.mp4"
+        try:
+            # Add text overlay if enabled
+            if add_overlay:
+                img = add_text_overlay(image_url, part['text'], local_font_path)
+                img = Image.fromarray(img)  # Convert NumPy array back to Pillow image
+            else:
+                img = Image.open(requests.get(image_url, stream=True).raw)
+
+            temp_img_path = f"temp_image_{idx}.png"
+            img.save(temp_img_path)  # Save the image directly
+
+            # Save audio file
+            temp_audio_path = f"audio_{idx}.mp3"
+            audio.export(temp_audio_path, format="mp3")
+
+            # Create a video clip
+            clip = ImageClip(temp_img_path, duration=audio.duration_seconds).set_audio(AudioFileClip(temp_audio_path))
+            clip = clip.set_fps(24)
+            clips.append(clip)
+
+        except Exception as e:
+            logging.error(f"Error processing image {image_url}: {e}")
+
+    # Concatenate all clips
+    if clips:
+        final_video = concatenate_videoclips(clips, method="compose")
+        final_video.write_videofile("final_video.mp4", codec="libx264", fps=24, audio_codec="aac")
+        return "final_video.mp4"
+    else:
+        logging.error("No valid clips to combine.")
+        return None
 
 # Streamlit app interface
 st.title("CX Podcast and Video Generator")
