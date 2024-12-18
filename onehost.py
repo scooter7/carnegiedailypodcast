@@ -127,6 +127,7 @@ def add_text_overlay(image_url, text, font_path):
         return None
 
 # Create video with logo at the start and static image at the end
+# Create video with logo at the start and static image at the end
 def create_video_with_audio(logo_url, images, script, audio_path, add_text_overlay_flag):
     try:
         temp_videos = []
@@ -134,8 +135,9 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
         # Add the logo as the first image
         temp_logo_video = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", logo_url, "-c:v", "libx264",
-            "-t", "5", "-pix_fmt", "yuv420p", temp_logo_video
+            "ffmpeg", "-y", "-loop", "1", "-i", logo_url, 
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
+            "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_logo_video
         ], check=True)
         temp_videos.append(temp_logo_video)
 
@@ -145,8 +147,9 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
             img_path = add_text_overlay(img_url, text, local_font_path) if add_text_overlay_flag else img_url
             temp_video = tempfile.mktemp(suffix=".mp4")
             subprocess.run([
-                "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-c:v", "libx264",
-                "-t", "5", "-pix_fmt", "yuv420p", temp_video
+                "ffmpeg", "-y", "-loop", "1", "-i", img_path,
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
+                "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_video
             ], check=True)
             temp_videos.append(temp_video)
 
@@ -154,8 +157,9 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
         end_image_url = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
         temp_end_video = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", end_image_url, "-c:v", "libx264",
-            "-t", "5", "-pix_fmt", "yuv420p", temp_end_video
+            "ffmpeg", "-y", "-loop", "1", "-i", end_image_url,
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
+            "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_end_video
         ], check=True)
         temp_videos.append(temp_end_video)
 
