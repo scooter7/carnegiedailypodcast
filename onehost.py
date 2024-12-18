@@ -318,12 +318,20 @@ if st.button("Generate Podcast"):
             ]
             for img_url in valid_images:
                 video_clips.append(generate_video_clip_with_effects(img_url, duration_per_clip, None, filter_option, transition_option, effect_option))
-            end_clip = generate_video_clip_with_effects("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", duration_per_clip)
-            video_clips.append(end_clip)
 
-            # Create final video
+            # Define the end image URL
+            end_image_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
+
+            # Create final video, including the end image
             st.write("Combining video clips and audio...")
-            final_video = create_final_video(video_clips, audio_path)
+            final_video = create_final_video(
+                video_clips,
+                audio_path,
+                end_image_url,
+                duration_per_clip,
+                filter_option,
+                transition_option
+            )
             if final_video:
                 st.video(final_video)
                 if add_text_overlay_flag:
