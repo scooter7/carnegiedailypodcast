@@ -10,6 +10,7 @@ from io import BytesIO
 import logging
 import cv2
 import numpy as np
+import os
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -90,6 +91,23 @@ def process_image(image_path, effect):
     else:
         return image
 
+# Re-encode video for compatibility
+def reencode_video(input_path, output_path):
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            input_path,
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            output_path,
+        ],
+        check=True,
+    )
+
 # Streamlit UI
 st.title("Custom Video and Script Generator")
 
@@ -147,7 +165,9 @@ if urls:
 
                     temp_video_path = tempfile.mktemp(suffix=".mp4")
                     cv2.imwrite(temp_image_path, processed_image)
-                    video_clips.append(temp_video_path)
+                    reencoded_video_path = tempfile.mktemp(suffix=".mp4")
+                    reencode_video(temp_video_path, reencoded_video_path)
+                    video_clips.append(reencoded_video_path)
 
         if video_clips:
             st.write("Combining video clips into final video...")
@@ -159,25 +179,28 @@ if urls:
                 for clip in video_clips:
                     f.write(f"file '{clip}'\n")
 
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-f",
-                    "concat",
-                    "-safe",
-                    "0",
-                    "-i",
-                    concat_file,
-                    "-c:v",
-                    "libx264",
-                    "-pix_fmt",
-                    "yuv420p",
-                    final_video_path,
-                ],
-                check=True,
-            )
-
-            st.video(final_video_path)
-            st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-            st.download_button("Download Script", final_script, "script.txt")
+            try:
+                subprocess.run(
+                    [
+                        "ffmpeg",
+                        "-y",
+                        "-f",
+                        "concat",
+                        "-safe",
+                        "0",
+                        "-i",
+                        concat_file,
+                        "-c:v",
+                        "libx264",
+                        "-pix_fmt",
+                        "yuv420p",
+                        final_video_path,
+                    ],
+                    check=True,
+                )
+                st.video(final_video_path)
+                st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                st.download_button("Download Script", final_script, "script.txt")
+            except subprocess.CalledProcessError as e:
+                logging.error(f"Error combining video clips: {e}")
+                st.error("Failed to create the final video. Please check the logs.")
