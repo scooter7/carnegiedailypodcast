@@ -150,22 +150,17 @@ def ensure_even_dimensions(image_path):
 # Generate video clip
 def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
     try:
+        # Download the image
         img_path = download_image(image_url)
         if not img_path:
             raise ValueError("Failed to download image.")
 
+        # Add text overlay if requested
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Open the image and calculate padding to preserve aspect ratio
-        img = Image.open(img_path)
-        original_width, original_height = img.size
-        target_size = max(original_width, original_height)
-        padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
-        padded_img.paste(img, ((target_size - original_width) // 2, (target_size - original_height) // 2))
-        padded_img_path = tempfile.mktemp(suffix=".png")
-        padded_img.save(padded_img_path)
-        img_path = padded_img_path
+        # Ensure even dimensions for the image
+        img_path = ensure_even_dimensions(img_path)
 
         # Build filter and transition options
         filters = {
@@ -179,13 +174,23 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
             "Zoom": "zoompan=z='zoom+0.01':d=25"
         }
 
-        vf_chain = ",".join(filter(None, [filters[filter_option], transitions[transition]]))
+        # Create video filter chain
+        vf_chain = ",".join(filter(None, [filters.get(filter_option, ""), transitions.get(transition, "")]))
 
+        # Round duration to 2 decimal places
+        duration = round(duration, 2)
+
+        # Set up FFmpeg command
         temp_video = tempfile.mktemp(suffix=".mp4")
         ffmpeg_command = [
             "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-vf", vf_chain if vf_chain else "null", "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
         ]
+        if vf_chain:
+            ffmpeg_command.insert(-2, "-vf")
+            ffmpeg_command.insert(-2, vf_chain)
+
+        # Run FFmpeg command
         subprocess.run(ffmpeg_command, check=True)
         return temp_video
     except Exception as e:
