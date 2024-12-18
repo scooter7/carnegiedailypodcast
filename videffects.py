@@ -39,12 +39,11 @@ def download_image_from_url(url):
 
 # Function to generate a summary using OpenAI
 def generate_summary(text, max_words):
-     system_prompt = """
-    You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
-    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.' Don't be afraid to show emotion and enthusiasm!
-    """
+    system_prompt = (
+        "You are a podcast host. Summarize the text narratively. Include key details and end with an engaging note."
+    )
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -72,9 +71,9 @@ def generate_audio_with_openai(script, voice="alloy"):
 def apply_cartoon_effect(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
-    edges = cv2.adaptiveThreshold(gray, 255, 
-                                  cv2.ADAPTIVE_THRESH_MEAN_C, 
-                                  cv2.THRESH_BINARY, 9, 9)
+    edges = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9
+    )
     color = cv2.bilateralFilter(image, 9, 300, 300)
     cartoon = cv2.bitwise_and(color, color, mask=edges)
     return cartoon
