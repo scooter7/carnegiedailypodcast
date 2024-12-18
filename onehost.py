@@ -98,59 +98,60 @@ def generate_audio_with_openai(text, voice="alloy"):
 
 # Add text overlay to an image
 def add_text_overlay(image_url, text):
-    response = requests.get(image_url, timeout=10)
-    img = Image.open(BytesIO(response.content)).convert("RGBA")
-    draw = ImageDraw.Draw(img)
-    font = ImageFont.truetype(local_font_path, size=28)
-    lines = textwrap.wrap(text, width=40)
-    y = img.height - (len(lines) * 35) - 20
-    for line in lines:
-        text_width = draw.textlength(line, font=font)
-        draw.text(((img.width - text_width) // 2, y), line, font=font, fill="white")
-        y += 35
-    temp_img_path = tempfile.mktemp(suffix=".png")
-    img.save(temp_img_path)
-    return temp_img_path
+    try:
+        response = requests.get(image_url, timeout=10)
+        img = Image.open(BytesIO(response.content)).convert("RGBA")
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.truetype(local_font_path, size=28)
+        lines = textwrap.wrap(text, width=40)
+        y = img.height - (len(lines) * 35) - 20
+        for line in lines:
+            text_width = draw.textlength(line, font=font)
+            draw.text(((img.width - text_width) // 2, y), line, font=font, fill="white")
+            y += 35
+        temp_img_path = tempfile.mktemp(suffix=".png")
+        img.save(temp_img_path)
+        return temp_img_path
+    except Exception as e:
+        logging.error(f"Failed to add text overlay: {e}")
+        return image_url
 
-# Generate video clip with filters and transitions
+# Generate video clips with transitions and filters
 def generate_video_clip(image_path, duration, filter_chain="", transition_chain=""):
-    temp_video = tempfile.mktemp(suffix=".mp4")
-    vf_chain = ",".join([filter_chain, transition_chain]).strip(",")
-    subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-t", str(duration),
-        "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
-    ], check=True)
-    return temp_video
+    try:
+        temp_video = tempfile.mktemp(suffix=".mp4")
+        vf_chain = ",".join(filter(None, [filter_chain, transition_chain]))
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-t", str(duration),
+            "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+        ], check=True)
+        return temp_video
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error: {e}")
+        return None
 
-# Create video clips with transitions
-def create_video_clips(logo_url, images, script, duration, filter_option, transition_option, add_text_overlay_flag):
+# Create video clips and combine with audio
+def create_final_video(logo_url, images, script, audio_path, duration, filter_option, transition_option, add_text_overlay_flag):
     FILTERS = {"None": "", "Grayscale": "format=gray", "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"}
     TRANSITIONS = {"None": "", "Fade": "fade=t=in:st=0:d=1", "Zoom": "zoompan=z='zoom+0.01':d=25"}
 
     temp_videos = []
-    per_image_duration = duration // (len(images) + 2)  # Divide among logo, images, ending
+    per_image_duration = duration // (len(images) + 2)
 
-    # Logo at the start
-    temp_videos.append(generate_video_clip(logo_url, 5, FILTERS[filter_option], TRANSITIONS[transition_option]))
+    temp_videos.append(generate_video_clip(logo_url, 5, FILTERS[filter_option], ""))
+    for img_url in images:
+        text_overlay = add_text_overlay(img_url, script) if add_text_overlay_flag else img_url
+        clip = generate_video_clip(text_overlay, per_image_duration, FILTERS[filter_option], TRANSITIONS[transition_option])
+        if clip:
+            temp_videos.append(clip)
 
-    # Main images
-    split_texts = textwrap.wrap(script, width=200)
-    for idx, img_url in enumerate(images):
-        text = split_texts[idx] if idx < len(split_texts) else ""
-        overlay_img = add_text_overlay(img_url, text) if add_text_overlay_flag else img_url
-        temp_videos.append(generate_video_clip(overlay_img, per_image_duration, FILTERS[filter_option], TRANSITIONS[transition_option]))
-
-    # Ending cx.jpg
     cx_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
-    temp_videos.append(generate_video_clip(cx_url, 5, FILTERS[filter_option], TRANSITIONS[transition_option]))
-    return temp_videos
-
-# Combine all video clips and audio
-def create_final_video(video_clips, audio_path):
+    temp_videos.append(generate_video_clip(cx_url, 5, FILTERS[filter_option], ""))
     concat_file = tempfile.mktemp(suffix=".txt")
     with open(concat_file, "w") as f:
-        for clip in video_clips:
-            f.write(f"file '{clip}'\n")
+        for video in temp_videos:
+            f.write(f"file '{video}'\n")
+
     final_video = "final_video.mp4"
     subprocess.run([
         "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
@@ -172,10 +173,10 @@ if st.button("Generate Podcast"):
     if images and text:
         script = generate_script(text, max_words_for_duration(duration))
         audio = generate_audio_with_openai(script)
-        video_clips = create_video_clips(logo_url, images, script, duration, filter_option, transition_option, add_text_overlay_flag)
-        final_video = create_final_video(video_clips, audio)
-        st.video(final_video)
-        st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
-        st.download_button("Download Script", script, "script.txt")
+        if audio:
+            final_video = create_final_video(logo_url, images, script, audio, duration, filter_option, transition_option, add_text_overlay_flag)
+            st.video(final_video)
+            st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
+            st.download_button("Download Script", script, "script.txt")
     else:
         st.error("No valid content found!")
