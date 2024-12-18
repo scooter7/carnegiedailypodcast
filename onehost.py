@@ -40,6 +40,19 @@ def max_words_for_duration(duration_seconds):
     wpm = 150
     return int((duration_seconds / 60) * wpm)
 
+# Download image to handle URLs for FFmpeg compatibility
+def download_image(image_url):
+    try:
+        response = requests.get(image_url, timeout=10)
+        response.raise_for_status()  # Ensure the request was successful
+        temp_img_path = tempfile.mktemp(suffix=".jpg")
+        with open(temp_img_path, "wb") as f:
+            f.write(response.content)
+        return temp_img_path
+    except Exception as e:
+        logging.error(f"Failed to download image {image_url}: {e}")
+        return None
+
 # Filter valid images
 def filter_valid_images(image_urls, min_width=400, min_height=300):
     valid_images = []
@@ -128,6 +141,7 @@ def add_fade_effect(previous_video, next_image_url, duration):
         raise
     return temp_fade_video
 
+# Generate video clip
 def generate_video_clip(image_url, duration, text=None, filter_option="None"):
     temp_video = tempfile.mktemp(suffix=".mp4")
     vf_filters = {
