@@ -131,27 +131,43 @@ def add_text_overlay(image_path, text):
 
 # Ensure even dimensions for videos
 def ensure_even_dimensions(image_path):
+    """
+    Ensure image dimensions are even without altering the aspect ratio.
+    Pads the image with black borders if necessary.
+    """
     try:
         img = Image.open(image_path)
         width, height = img.size
-        new_width = width if width % 2 == 0 else width - 1
-        new_height = height if height % 2 == 0 else height - 1
 
-        if (new_width, new_height) != (width, height):
-            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            temp_img_path = tempfile.mktemp(suffix=".png")
-            img.save(temp_img_path)
-            return temp_img_path
-        return image_path
+        # Calculate even dimensions
+        new_width = width if width % 2 == 0 else width + 1
+        new_height = height if height % 2 == 0 else height + 1
+
+        # Create a new image with the even dimensions
+        padded_img = Image.new("RGB", (new_width, new_height), (0, 0, 0))
+        # Center the original image on the padded image
+        x_offset = (new_width - width) // 2
+        y_offset = (new_height - height) // 2
+        padded_img.paste(img, (x_offset, y_offset))
+
+        # Save the padded image to a temporary file
+        temp_img_path = tempfile.mktemp(suffix=".png")
+        padded_img.save(temp_img_path)
+        return temp_img_path
     except Exception as e:
-        logging.error(f"Error adjusting image dimensions: {e}")
+        logging.error(f"Error ensuring even dimensions while preserving aspect ratio: {e}")
         return None
 
-# Generate video clip
-def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
+# Add dropdown for video effects
+effect_option = st.selectbox(
+    "Select Video Effect:", 
+    ["None", "Cartoon", "Sketch", "Anime"]
+)
+
+# Updated generate_video_clip function with effects
+def generate_video_clip_with_effects(image_url, duration, text=None, filter_option="None", transition_option="None", effect_option="None"):
     try:
-        # Ensure minimum duration
-        duration = max(1, round(duration, 2))  # Minimum duration of 1 second
+        duration = max(1, round(duration, 2))  # Ensure minimum duration
 
         # Download the image
         img_path = download_image(image_url)
@@ -162,55 +178,51 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Validate image format and aspect ratio preservation
-        img = Image.open(img_path)
-        original_width, original_height = img.size
-        target_size = max(original_width, original_height)
+        # Ensure even dimensions and maintain aspect ratio
+        img_path = ensure_even_dimensions(img_path)
+        if not img_path:
+            raise ValueError("Failed to process image dimensions.")
 
-        # Create a square padded image with black borders
-        padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
-        x_offset = (target_size - original_width) // 2
-        y_offset = (target_size - original_height) // 2
-        padded_img.paste(img, (x_offset, y_offset))
-
-        # Save the padded image to a temporary file
-        padded_img_path = tempfile.mktemp(suffix=".png")
-        padded_img.save(padded_img_path)
-        img_path = padded_img_path
-
-        # Build filter and transition options
-        filters = {
-            "None": "",
-            "Grayscale": "format=gray",
-            "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
+        # Define filters based on selected effect
+        effects = {
+            "None": None,
+            "Cartoon": "geq=lum='p(X,Y)':cb='128+(p(X,Y)-128)*2':cr='128+(p(X,Y)-128)*2'",
+            "Sketch": "edgedetect=mode=colormix:high=0.1:low=0.1",
+            "Anime": "tblend=all_mode='and'",  # Anime-style blending
         }
         transitions = {
-            "None": "",
+            "None": None,
             "Fade": "fade=t=in:st=0:d=1",
-            "Zoom": "zoompan=z='zoom+0.01':d=25"
+            "Zoom": "zoompan=z='zoom+0.01':d=25",
         }
 
-        vf_chain = ",".join(filter(None, [filters.get(filter_option, ""), transitions.get(transition, "")]))
+        # Build the video filter chain
+        vf_chain_parts = [
+            effects.get(effect_option, None),
+            transitions.get(transition_option, None),
+        ]
+        vf_chain = ",".join([part for part in vf_chain_parts if part])
 
-        # Create the video clip using FFmpeg
+        # Build FFmpeg command
         temp_video = tempfile.mktemp(suffix=".mp4")
         ffmpeg_command = [
-            "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-vf", vf_chain if vf_chain else "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration)
         ]
+        if vf_chain:
+            ffmpeg_command += ["-vf", vf_chain]
+        else:
+            ffmpeg_command += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]  # Neutral scaling
 
-        # Run FFmpeg and validate output
+        ffmpeg_command += ["-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video]
+
+        # Run FFmpeg command
         subprocess.run(ffmpeg_command, check=True)
-        if not os.path.exists(temp_video) or os.path.getsize(temp_video) == 0:
-            raise ValueError("FFmpeg failed to generate a valid video clip.")
-        
         return temp_video
     except subprocess.CalledProcessError as ffmpeg_error:
         logging.error(f"FFmpeg process failed: {ffmpeg_error.stderr}")
         return None
     except Exception as e:
-        logging.error(f"Error generating video clip: {e}")
+        logging.error(f"Error generating video clip with effect: {e}")
         return None
 
 # Combine videos and audio
@@ -222,12 +234,16 @@ def create_final_video(video_clips, audio_path, end_image_url, duration_per_clip
         # Process the end image
         try:
             logging.info("Adding end image to the video...")
-            end_clip = generate_video_clip(end_image_url, duration_per_clip, None, filter_option, transition_option)
-            if end_clip:
-                video_clips.append(end_clip)
-                logging.info("End image successfully processed and added.")
+            end_image_path = ensure_even_dimensions(download_image(end_image_url))
+            if end_image_path:
+                end_clip = generate_video_clip_with_effects(end_image_path, duration_per_clip, None, filter_option, transition_option)
+                if end_clip:
+                    video_clips.append(end_clip)
+                    logging.info("End image successfully processed and added.")
+                else:
+                    logging.warning("Failed to process the end image. It will be skipped.")
             else:
-                logging.warning("Failed to process the end image. It will be skipped.")
+                logging.warning("Failed to process the end image dimensions. It will be skipped.")
         except Exception as e:
             logging.error(f"Error processing the end image: {e}")
             logging.warning("An error occurred while processing the end image. It will be skipped.")
@@ -289,7 +305,7 @@ filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Se
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
 total_duration = st.number_input("Total Video Duration (seconds):", min_value=10, value=60, step=10)
 
-if st.button("Generate Video"):
+if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
     valid_images = filter_valid_images(images)
 
@@ -315,19 +331,26 @@ if st.button("Generate Video"):
             st.write(f"Allocating {duration_per_clip:.2f} seconds per clip for {num_images} images.")
 
             # Generate video clips
-            st.write("Generating video clips...")
+            st.write("Generating video clips with selected effect...")
             video_clips = [
-                generate_video_clip(logo_url, 5, None, filter_option, transition_option)
+                generate_video_clip_with_effects(logo_url, 5, None, filter_option, transition_option, effect_option)
             ]
             for img_url in valid_images:
-                video_clips.append(generate_video_clip(img_url, duration_per_clip, None, filter_option, transition_option))
+                video_clips.append(generate_video_clip_with_effects(img_url, duration_per_clip, None, filter_option, transition_option, effect_option))
 
-            # Specify the end image URL
+            # Define the end image URL
             end_image_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
 
-            # Create final video with the end image
+            # Create final video, including the end image
             st.write("Combining video clips and audio...")
-            final_video = create_final_video(video_clips, audio_path, end_image_url, duration_per_clip, filter_option, transition_option)
+            final_video = create_final_video(
+                video_clips,
+                audio_path,
+                end_image_url,
+                duration_per_clip,
+                filter_option,
+                transition_option
+            )
             if final_video:
                 st.video(final_video)
                 if add_text_overlay_flag:
