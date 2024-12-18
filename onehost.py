@@ -112,34 +112,38 @@ def add_text_overlay(image_url, text):
     img.save(temp_img_path)
     return temp_img_path
 
-# Generate video clips with transitions and filters
-def create_video_clips(logo_url, images, script, duration, filter_option, transition_option, add_text_overlay_flag):
-    vf_filters = {"None": "", "Grayscale": "format=gray", "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"}
-    transitions = {"None": "", "Fade": "fade", "Zoom": "zoompan=z='zoom+0.01':d=25"}
-    
-    temp_videos = []
-    split_texts = textwrap.wrap(script, width=200)[:len(images)]
-    per_image_duration = duration // len(images)
-
-    # Add logo at the start
-    temp_videos.append(generate_video_clip(logo_url, 5, None, vf_filters, transitions))
-
-    # Add main images with optional overlay
-    for img_url, text in zip(images, split_texts):
-        overlay_img = add_text_overlay(img_url, text) if add_text_overlay_flag else img_url
-        temp_videos.append(generate_video_clip(overlay_img, per_image_duration, None, vf_filters, transitions))
-
-    # Append ending cx.jpg image
-    cx_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
-    temp_videos.append(generate_video_clip(cx_url, 5, None, vf_filters, transitions))
-    return temp_videos
-
-def generate_video_clip(img_path, duration, filter_option, transition_option):
+# Generate video clip with filters and transitions
+def generate_video_clip(image_path, duration, filter_chain="", transition_chain=""):
     temp_video = tempfile.mktemp(suffix=".mp4")
+    vf_chain = ",".join([filter_chain, transition_chain]).strip(",")
     subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration), "-vf", filter_option, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+        "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-t", str(duration),
+        "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
     ], check=True)
     return temp_video
+
+# Create video clips with transitions
+def create_video_clips(logo_url, images, script, duration, filter_option, transition_option, add_text_overlay_flag):
+    FILTERS = {"None": "", "Grayscale": "format=gray", "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"}
+    TRANSITIONS = {"None": "", "Fade": "fade=t=in:st=0:d=1", "Zoom": "zoompan=z='zoom+0.01':d=25"}
+
+    temp_videos = []
+    per_image_duration = duration // (len(images) + 2)  # Divide among logo, images, ending
+
+    # Logo at the start
+    temp_videos.append(generate_video_clip(logo_url, 5, FILTERS[filter_option], TRANSITIONS[transition_option]))
+
+    # Main images
+    split_texts = textwrap.wrap(script, width=200)
+    for idx, img_url in enumerate(images):
+        text = split_texts[idx] if idx < len(split_texts) else ""
+        overlay_img = add_text_overlay(img_url, text) if add_text_overlay_flag else img_url
+        temp_videos.append(generate_video_clip(overlay_img, per_image_duration, FILTERS[filter_option], TRANSITIONS[transition_option]))
+
+    # Ending cx.jpg
+    cx_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
+    temp_videos.append(generate_video_clip(cx_url, 5, FILTERS[filter_option], TRANSITIONS[transition_option]))
+    return temp_videos
 
 # Combine all video clips and audio
 def create_final_video(video_clips, audio_path):
@@ -149,7 +153,8 @@ def create_final_video(video_clips, audio_path):
             f.write(f"file '{clip}'\n")
     final_video = "final_video.mp4"
     subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path, "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
+        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
+        "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
     ], check=True)
     return final_video
 
