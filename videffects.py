@@ -43,7 +43,7 @@ def generate_summary(text, max_words):
         "You are a podcast host. Summarize the text narratively. Include key details and end with an engaging note."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
