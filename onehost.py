@@ -134,17 +134,21 @@ def ensure_even_dimensions(image_path):
     try:
         img = Image.open(image_path)
         width, height = img.size
-        new_width = width if width % 2 == 0 else width - 1
-        new_height = height if height % 2 == 0 else height - 1
 
+        # Calculate new dimensions (even values)
+        new_width = width if width % 2 == 0 else width + 1
+        new_height = height if height % 2 == 0 else height + 1
+
+        # Create a new image with even dimensions if needed
         if (new_width, new_height) != (width, height):
-            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            padded_img = Image.new("RGB", (new_width, new_height), (0, 0, 0))
+            padded_img.paste(img, (0, 0))  # Paste original image at the top-left corner
             temp_img_path = tempfile.mktemp(suffix=".png")
-            img.save(temp_img_path)
+            padded_img.save(temp_img_path)
             return temp_img_path
         return image_path
     except Exception as e:
-        logging.error(f"Error adjusting image dimensions: {e}")
+        logging.error(f"Error ensuring even dimensions: {e}")
         return None
 
 # Add dropdown for video effects
@@ -167,21 +171,10 @@ def generate_video_clip_with_effects(image_url, duration, text=None, filter_opti
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Apply aspect ratio preservation and padding
-        img = Image.open(img_path)
-        original_width, original_height = img.size
-        target_size = max(original_width, original_height)
-
-        # Create a square padded image with black borders
-        padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
-        x_offset = (target_size - original_width) // 2
-        y_offset = (target_size - original_height) // 2
-        padded_img.paste(img, (x_offset, y_offset))
-
-        # Save the padded image to a temporary file
-        padded_img_path = tempfile.mktemp(suffix=".png")
-        padded_img.save(padded_img_path)
-        img_path = padded_img_path
+        # Ensure even dimensions
+        img_path = ensure_even_dimensions(img_path)
+        if not img_path:
+            raise ValueError("Failed to process image dimensions.")
 
         # Define filters based on selected effect
         effects = {
@@ -226,6 +219,7 @@ def generate_video_clip_with_effects(image_url, duration, text=None, filter_opti
         return None
 
 # Combine videos and audio
+# Combine videos and audio
 def create_final_video(video_clips, audio_path, end_image_url, duration_per_clip, filter_option, transition_option):
     try:
         if not video_clips or None in video_clips:
@@ -234,12 +228,16 @@ def create_final_video(video_clips, audio_path, end_image_url, duration_per_clip
         # Process the end image
         try:
             logging.info("Adding end image to the video...")
-            end_clip = generate_video_clip(end_image_url, duration_per_clip, None, filter_option, transition_option)
-            if end_clip:
-                video_clips.append(end_clip)
-                logging.info("End image successfully processed and added.")
+            end_image_path = ensure_even_dimensions(download_image(end_image_url))
+            if end_image_path:
+                end_clip = generate_video_clip_with_effects(end_image_path, duration_per_clip, None, filter_option, transition_option)
+                if end_clip:
+                    video_clips.append(end_clip)
+                    logging.info("End image successfully processed and added.")
+                else:
+                    logging.warning("Failed to process the end image. It will be skipped.")
             else:
-                logging.warning("Failed to process the end image. It will be skipped.")
+                logging.warning("Failed to process the end image dimensions. It will be skipped.")
         except Exception as e:
             logging.error(f"Error processing the end image: {e}")
             logging.warning("An error occurred while processing the end image. It will be skipped.")
