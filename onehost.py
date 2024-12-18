@@ -37,28 +37,57 @@ def download_font(font_url, local_path):
             f.write(response.content)
 download_font(font_url, local_font_path)
 
+# Scrape text and images from the page
+def scrape_images_and_text(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extract images
+        image_urls = [urljoin(url, img["src"]) for img in soup.find_all("img", src=True)]
+        
+        # Extract and truncate text content
+        text = soup.get_text(separator=" ", strip=True)
+        return image_urls, text[:5000]  # Truncate text to 5000 characters
+    except Exception as e:
+        logging.error(f"Error scraping content: {e}")
+        return [], ""
+
+# Filter valid images by size and format
+def filter_valid_images(image_urls, min_width=400, min_height=300):
+    valid_images = []
+    for url in image_urls:
+        try:
+            response = requests.get(url, timeout=10)
+            img = Image.open(BytesIO(response.content))
+
+            if img.width >= min_width and img.height >= min_height and img.format in ["JPEG", "PNG"]:
+                valid_images.append(url)
+        except Exception as e:
+            logging.warning(f"Invalid image {url}: {e}")
+    return valid_images
+
 # Add text overlay to an image
 def add_text_overlay(image_url, text, font_path):
     try:
         response = requests.get(image_url, timeout=10)
-        response.raise_for_status()
         img = Image.open(BytesIO(response.content)).convert("RGBA")
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(font_path, size=28)
         lines = textwrap.wrap(text, width=40)
 
-        # Draw background box
+        # Draw background rectangle
         box_height = len(lines) * font.size + 20
         draw.rectangle([(0, img.height - box_height), (img.width, img.height)], fill=(0, 0, 0, 128))
 
-        # Draw text
+        # Add text
         y = img.height - box_height + 10
         for line in lines:
             text_width = draw.textlength(line, font=font)
             draw.text(((img.width - text_width) // 2, y), line, font=font, fill="white")
             y += font.size
 
-        # Save temporary image
         temp_img_path = tempfile.mktemp(suffix=".png")
         img.save(temp_img_path)
         return temp_img_path
@@ -79,23 +108,17 @@ def generate_audio_with_openai(text, voice="alloy"):
             audio_file.write(response.content)
         return audio_path
     except Exception as e:
-        logging.error(f"Error generating audio with OpenAI TTS: {e}")
+        logging.error(f"Error generating audio: {e}")
         return None
 
 # Generate script with OpenAI
 def generate_script(text, max_words):
     try:
-        system_prompt = """
-        You are a podcast narrator for 'CX Overview.' Generate a robust, fact-based, news-oriented narrative 
-        about the given topic. Include relevant statistics, insights, and accolades if available. 
-        Make it engaging and conversational. The script should be no longer than the specified word count.
-        Format the response as plain text without any additional formatting.
-        """
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"The content: {text} \nLimit: {max_words} words"}
+                {"role": "system", "content": "Generate a professional, fact-based narrative. Limit: 200 words."},
+                {"role": "user", "content": text}
             ]
         )
         return response.choices[0].message.content.strip()
@@ -103,21 +126,20 @@ def generate_script(text, max_words):
         logging.error(f"Error generating script: {e}")
         return ""
 
-# Create video using PyAV and FFmpeg
-def create_video_with_audio(images, text, audio_path, add_text_overlay):
+# Create video with PyAV (via FFmpeg)
+def create_video_with_audio(images, text, audio_path):
     try:
+        split_texts = textwrap.wrap(text, width=250)[:len(images)]
         temp_video_files = []
 
-        # Split the text into smaller parts for each image
-        split_texts = textwrap.wrap(text, width=250)[:len(images)]
         for idx, (image_url, split_text) in enumerate(zip(images, split_texts)):
             # Add text overlay
             image_path = add_text_overlay(image_url, split_text, local_font_path)
-
-            # Generate silent video segment
             temp_video = tempfile.mktemp(suffix=".mp4")
+            
+            # Generate silent video
             subprocess.run([
-                "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-c:v", "libx264", 
+                "ffmpeg", "-y", "-loop", "1", "-i", image_path, "-c:v", "libx264",
                 "-t", "5", "-pix_fmt", "yuv420p", temp_video
             ], check=True)
             temp_video_files.append(temp_video)
@@ -144,36 +166,30 @@ st.title("CX Podcast and Video Generator")
 
 # Input for URL
 url_input = st.text_input("Enter the URL of the page to scrape text and images:")
-add_text_overlay = st.checkbox("Add text overlays to video", value=True)
-
-# Button to trigger generation
 if st.button("Generate Content"):
     if not url_input.strip():
         st.error("Please enter a valid URL.")
     else:
-        # Simulate scraped content for demo purposes
-        images = [
-            "https://via.placeholder.com/1280x720.png?text=Image1",
-            "https://via.placeholder.com/1280x720.png?text=Image2",
-            "https://via.placeholder.com/1280x720.png?text=Image3"
-        ]
-        sample_text = "Welcome to the CX Overview! Today we explore the most exciting colleges in the nation."
-
-        # Generate script using OpenAI
-        max_words = 200
-        script = generate_script(sample_text, max_words)
-        if not script:
-            st.error("Failed to generate script.")
+        # Scrape content
+        image_urls, scraped_text = scrape_images_and_text(url_input)
+        valid_images = filter_valid_images(image_urls)
+        if not valid_images or not scraped_text:
+            st.error("No valid images or text found.")
         else:
-            # Generate full audio using OpenAI TTS
+            # Generate script
+            script = generate_script(scraped_text, 200)
+            st.text("Generated Script:")
+            st.write(script)
+
+            # Generate audio
             audio_path = generate_audio_with_openai(script)
             if not audio_path:
                 st.error("Failed to generate audio.")
             else:
-                # Create video with PyAV
-                video_file = create_video_with_audio(images, script, audio_path, add_text_overlay)
+                # Create video
+                video_file = create_video_with_audio(valid_images, script, audio_path)
                 if video_file:
                     st.video(video_file)
-                    st.download_button("Download Video", open(video_file, "rb"), "cx_overview_video.mp4")
+                    st.download_button("Download Video", open(video_file, "rb"), "cx_overview.mp4")
                 else:
                     st.error("Failed to create video.")
