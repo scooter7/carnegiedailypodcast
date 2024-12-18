@@ -2,7 +2,8 @@ import streamlit as st
 from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
-import openai\import tempfile
+import openai
+import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from moviepy.video.fx.fadein import fadein
 from moviepy.video.fx.fadeout import fadeout
