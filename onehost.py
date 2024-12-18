@@ -96,85 +96,37 @@ def generate_audio_with_openai(text, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Generate video clip
-def generate_video_clip(image_url, duration, text=None, filter_option="None"):
-    temp_video = tempfile.mktemp(suffix=".mp4")
-    vf_filters = {
-        "None": "",
-        "Grayscale": "format=gray",
-        "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
-    }
-    vf = vf_filters.get(filter_option, "")
-    overlay_path = add_text_overlay(image_url, text) if text else download_image(image_url)
+# Convert image to video
+def image_to_video(image_path, duration=2):
+    temp_video_path = tempfile.mktemp(suffix=".mp4")
     try:
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
-            "-vf", vf if vf else "scale=1280:720", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
-        ], check=True)
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-loop", "1", "-i", image_path,
+                "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video_path
+            ],
+            check=True
+        )
     except subprocess.CalledProcessError as e:
-        logging.error(f"FFmpeg error: {e}")
+        logging.error(f"Error converting image to video: {e}")
         raise
-    return temp_video
-
-# Download image to handle URLs for FFmpeg compatibility
-def download_image(image_url):
-    try:
-        response = requests.get(image_url, timeout=10)
-        temp_img_path = tempfile.mktemp(suffix=".jpg")
-        with open(temp_img_path, "wb") as f:
-            f.write(response.content)
-        return temp_img_path
-    except Exception as e:
-        logging.error(f"Failed to download image {image_url}: {e}")
-        return None
-
-# Add zoom effect for transitions
-def add_zoom_effect(image_url, duration):
-    temp_video = tempfile.mktemp(suffix="_zoom.mp4")
-    try:
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", download_image(image_url),
-            "-vf", "zoompan=z='zoom+0.01':d=25", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
-        ], check=True)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"FFmpeg error in zoom effect: {e}")
-        raise
-    return temp_video
+    return temp_video_path
 
 # Add fade effect for transitions
 def add_fade_effect(previous_video, next_image_url, duration):
     temp_fade_video = tempfile.mktemp(suffix="_fade.mp4")
     next_image_path = download_image(next_image_url)
+    next_video_path = image_to_video(next_image_path, duration=duration)
     try:
         subprocess.run([
-            "ffmpeg", "-y", "-i", previous_video, "-loop", "1", "-i", next_image_path,
-            "-filter_complex", f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset=0", 
+            "ffmpeg", "-y", "-i", previous_video, "-i", next_video_path,
+            "-filter_complex", f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset=0",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_fade_video
         ], check=True)
     except subprocess.CalledProcessError as e:
         logging.error(f"FFmpeg error in fade effect: {e}")
         raise
     return temp_fade_video
-
-# Add text overlay
-def add_text_overlay(image_url, text):
-    try:
-        response = requests.get(image_url, timeout=10)
-        img = Image.open(BytesIO(response.content)).convert("RGBA")
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(local_font_path, size=28)
-        lines = textwrap.wrap(text, width=40)
-        y = img.height - (len(lines) * 35) - 20
-        for line in lines:
-            text_width = draw.textlength(line, font=font)
-            draw.text(((img.width - text_width) // 2, y), line, font=font, fill="white")
-            y += 35
-        temp_img_path = tempfile.mktemp(suffix=".png")
-        img.save(temp_img_path)
-        return temp_img_path
-    except Exception as e:
-        logging.error(f"Failed to add text overlay: {e}")
-        return None
 
 # Combine videos and audio
 def create_final_video(logo_url, images, script, audio_path, duration, filter_option, add_text_overlay_flag, transition_option):
