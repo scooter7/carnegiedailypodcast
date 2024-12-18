@@ -41,7 +41,7 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid images
-def filter_valid_images(image_urls, min_width=100, min_height=100):
+def filter_valid_images(image_urls, min_width=200, min_height=200):
     valid_images = []
     for url in image_urls:
         try:
@@ -214,10 +214,23 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         return None
 
 # Combine videos and audio
-def create_final_video(video_clips, audio_path):
+def create_final_video(video_clips, audio_path, end_image_url, duration_per_clip, filter_option, transition_option):
     try:
         if not video_clips or None in video_clips:
             raise ValueError("One or more video clips are invalid.")
+
+        # Process the end image
+        try:
+            logging.info("Adding end image to the video...")
+            end_clip = generate_video_clip(end_image_url, duration_per_clip, None, filter_option, transition_option)
+            if end_clip:
+                video_clips.append(end_clip)
+                logging.info("End image successfully processed and added.")
+            else:
+                logging.warning("Failed to process the end image. It will be skipped.")
+        except Exception as e:
+            logging.error(f"Error processing the end image: {e}")
+            logging.warning("An error occurred while processing the end image. It will be skipped.")
 
         # Get audio duration using ffprobe
         audio_duration_command = [
@@ -276,7 +289,7 @@ filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Se
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
 total_duration = st.number_input("Total Video Duration (seconds):", min_value=10, value=60, step=10)
 
-if st.button("Generate Podcast"):
+if st.button("Generate Video"):
     images, text = scrape_images_and_text(url_input)
     valid_images = filter_valid_images(images)
 
@@ -308,12 +321,13 @@ if st.button("Generate Podcast"):
             ]
             for img_url in valid_images:
                 video_clips.append(generate_video_clip(img_url, duration_per_clip, None, filter_option, transition_option))
-            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", duration_per_clip)
-            video_clips.append(end_clip)
 
-            # Create final video
+            # Specify the end image URL
+            end_image_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
+
+            # Create final video with the end image
             st.write("Combining video clips and audio...")
-            final_video = create_final_video(video_clips, audio_path)
+            final_video = create_final_video(video_clips, audio_path, end_image_url, duration_per_clip, filter_option, transition_option)
             if final_video:
                 st.video(final_video)
                 if add_text_overlay_flag:
