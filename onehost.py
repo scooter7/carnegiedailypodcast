@@ -156,8 +156,17 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        img_path = ensure_even_dimensions(img_path)
+        # Open the image and calculate padding to preserve aspect ratio
+        img = Image.open(img_path)
+        original_width, original_height = img.size
+        target_size = max(original_width, original_height)
+        padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
+        padded_img.paste(img, ((target_size - original_width) // 2, (target_size - original_height) // 2))
+        padded_img_path = tempfile.mktemp(suffix=".png")
+        padded_img.save(padded_img_path)
+        img_path = padded_img_path
 
+        # Build filter and transition options
         filters = {
             "None": "",
             "Grayscale": "format=gray",
@@ -188,6 +197,18 @@ def create_final_video(video_clips, audio_path):
         if not video_clips or None in video_clips:
             raise ValueError("One or more video clips are invalid.")
 
+        # Get audio duration using ffprobe
+        audio_duration_command = [
+            "ffprobe", "-i", audio_path, "-show_entries", "format=duration",
+            "-v", "quiet", "-of", "csv=p=0"
+        ]
+        audio_duration = float(subprocess.check_output(audio_duration_command).strip())
+
+        # Extend the last video clip to match audio duration
+        last_video_clip = video_clips[-1]
+        video_clips[-1] = extend_video_clip(last_video_clip, audio_duration)
+
+        # Concatenate video clips with audio
         concat_file = tempfile.mktemp(suffix=".txt")
         with open(concat_file, "w") as f:
             for clip in video_clips:
@@ -203,6 +224,19 @@ def create_final_video(video_clips, audio_path):
         logging.error(f"Error creating final video: {e}")
         return None
 
+def extend_video_clip(video_path, target_duration):
+    try:
+        # Create an extended version of the video to match target duration
+        extended_video = tempfile.mktemp(suffix=".mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-stream_loop", "-1", "-i", video_path,
+            "-t", str(target_duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", extended_video
+        ], check=True)
+        return extended_video
+    except Exception as e:
+        logging.error(f"Error extending video clip: {e}")
+        return video_path
+
 # Main Streamlit Interface
 st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
@@ -210,27 +244,48 @@ logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add Text Overlays to Images")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
-duration = st.radio("Video Duration (seconds):", [30, 45, 60])
+clip_duration = st.radio("Clip Duration (seconds):", [5, 10, 15])  # Individual clip duration
 
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
     valid_images = filter_valid_images(images)
 
     if valid_images and text:
-        script = generate_script(text, max_words_for_duration(duration))
+        st.write("Generating podcast script...")
+        script = generate_script(text, max_words_for_duration(clip_duration * len(valid_images)))
+        
         audio_path = generate_audio_with_openai(script)
-
         if audio_path:
+            st.write("Audio generated. Calculating audio duration...")
+            
+            # Retrieve audio duration for alignment
+            audio_duration_command = [
+                "ffprobe", "-i", audio_path, "-show_entries", "format=duration",
+                "-v", "quiet", "-of", "csv=p=0"
+            ]
+            audio_duration = float(subprocess.check_output(audio_duration_command).strip())
+            st.write(f"Audio duration: {audio_duration:.2f} seconds")
+
+            # Generate video clips
+            st.write("Generating video clips...")
             video_clips = [
                 generate_video_clip(logo_url, 5, None, filter_option, transition_option)
             ]
-            for idx, img_url in enumerate(valid_images[:duration // 5]):
-                video_clips.append(generate_video_clip(img_url, 5, script if add_text_overlay_flag else None, filter_option, transition_option))
-            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5)
+            for idx, img_url in enumerate(valid_images[:int(audio_duration / clip_duration)]):
+                video_clips.append(generate_video_clip(img_url, clip_duration, script if add_text_overlay_flag else None, filter_option, transition_option))
+            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", clip_duration)
             video_clips.append(end_clip)
 
+            # Create final video
+            st.write("Combining video clips and audio...")
             final_video = create_final_video(video_clips, audio_path)
             if final_video:
                 st.video(final_video)
                 st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
                 st.download_button("Download Script", script, "script.txt")
+            else:
+                st.error("Error generating final video.")
+        else:
+            st.error("Error generating audio. Please check your input.")
+    else:
+        st.error("No valid images or text found. Please check the URL.")
