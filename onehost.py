@@ -41,7 +41,7 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid images
-def filter_valid_images(image_urls, min_width=100, min_height=100):
+def filter_valid_images(image_urls, min_width=200, min_height=200):
     valid_images = []
     for url in image_urls:
         try:
