@@ -18,3 +18,4 @@ moviepy==1.0.3
 Pillow
 cairosvg
 pyav
+tqdm
