@@ -205,9 +205,17 @@ def create_final_video(video_clips, audio_path):
         ]
         audio_duration = float(subprocess.check_output(audio_duration_command).strip())
 
-        # Extend the last video clip to match audio duration
-        last_video_clip = video_clips[-1]
-        video_clips[-1] = extend_video_clip(last_video_clip, audio_duration)
+        # Extend the last video clip to match audio duration if necessary
+        total_video_duration = sum([
+            float(subprocess.check_output([
+                "ffprobe", "-i", clip, "-show_entries", "format=duration",
+                "-v", "quiet", "-of", "csv=p=0"
+            ]).strip()) for clip in video_clips
+        ])
+        if total_video_duration < audio_duration:
+            last_clip = video_clips[-1]
+            extended_clip = extend_video_clip(last_clip, audio_duration - total_video_duration)
+            video_clips[-1] = extended_clip
 
         # Concatenate video clips with audio
         concat_file = tempfile.mktemp(suffix=".txt")
@@ -225,13 +233,13 @@ def create_final_video(video_clips, audio_path):
         logging.error(f"Error creating final video: {e}")
         return None
 
-def extend_video_clip(video_path, target_duration):
+def extend_video_clip(video_path, extra_duration):
     try:
         # Create an extended version of the video to match target duration
         extended_video = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
             "ffmpeg", "-y", "-stream_loop", "-1", "-i", video_path,
-            "-t", str(target_duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", extended_video
+            "-t", str(extra_duration), "-c:v", "libx264", "-pix_fmt", "yuv420p", extended_video
         ], check=True)
         return extended_video
     except Exception as e:
@@ -245,7 +253,7 @@ logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add Text Overlays (display text below video)")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
-clip_duration = st.radio("Clip Duration (seconds):", [5, 10, 15])  # Individual clip duration
+total_duration = st.number_input("Total Video Duration (seconds):", min_value=10, value=60, step=10)
 
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
@@ -253,7 +261,7 @@ if st.button("Generate Podcast"):
 
     if valid_images and text:
         st.write("Generating podcast script...")
-        script = generate_script(text, max_words_for_duration(clip_duration * len(valid_images)))
+        script = generate_script(text, max_words_for_duration(total_duration))
         
         audio_path = generate_audio_with_openai(script)
         if audio_path:
@@ -267,14 +275,19 @@ if st.button("Generate Podcast"):
             audio_duration = float(subprocess.check_output(audio_duration_command).strip())
             st.write(f"Audio duration: {audio_duration:.2f} seconds")
 
+            # Calculate per-image duration
+            num_images = len(valid_images)
+            duration_per_clip = total_duration / num_images
+            st.write(f"Allocating {duration_per_clip:.2f} seconds per clip for {num_images} images.")
+
             # Generate video clips
             st.write("Generating video clips...")
             video_clips = [
                 generate_video_clip(logo_url, 5, None, filter_option, transition_option)
             ]
-            for idx, img_url in enumerate(valid_images[:int(audio_duration / clip_duration)]):
-                video_clips.append(generate_video_clip(img_url, clip_duration, None, filter_option, transition_option))
-            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", clip_duration)
+            for img_url in valid_images:
+                video_clips.append(generate_video_clip(img_url, duration_per_clip, None, filter_option, transition_option))
+            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", duration_per_clip)
             video_clips.append(end_clip)
 
             # Create final video
