@@ -1,9 +1,9 @@
+import tempfile  # This import was missing earlier
 import streamlit as st
 from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
 import openai
-tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, fadein, fadeout
 from PIL import Image
 from io import BytesIO
