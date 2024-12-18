@@ -1,10 +1,11 @@
-import tempfile  # This import was missing earlier
 import streamlit as st
 from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
-import openai
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, fadein, fadeout
+import openai\import tempfile
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
+from moviepy.video.fx.fadein import fadein
+from moviepy.video.fx.fadeout import fadeout
 from PIL import Image
 from io import BytesIO
 import logging
@@ -120,10 +121,10 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
     try:
         # Apply transitions between clips
         if transition_type == "Fade":
-            video_clips = [fadein(clip, 1).fadeout(1) for clip in video_clips]
-        elif transition_type == "Dissolve":
-            for i in range(1, len(video_clips)):
-                video_clips[i] = video_clips[i].crossfadein(1)
+            video_clips = [
+                fadein(clip, 1).fadeout(1) if i < len(video_clips) - 1 else fadein(clip, 1)
+                for i, clip in enumerate(video_clips)
+            ]
 
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
@@ -143,55 +144,71 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
 # Streamlit UI
 st.title("Custom Video and Script Generator")
 
+# Add a URL input field
 def url_input_fields():
     urls = []
-    st.subheader("Enter Page URLs")
-    num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
-    for i in range(num_urls):
-        url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
-        urls.append(url)
+    with st.container():
+        st.subheader("Enter Page URLs")
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+        for i in range(num_urls):
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
+            urls.append(url)
     return urls
 
+# Add image URL input fields per URL
 def image_input_fields(urls):
     url_image_map = {}
     for i, url in enumerate(urls):
         st.subheader(f"Images for {url}")
-        num_images = st.number_input(f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1)
+        num_images = st.number_input(
+            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
+        )
         images = []
         for j in range(num_images):
-            image_url = st.text_input(f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL")
+            image_url = st.text_input(
+                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
+            )
             images.append(image_url)
         url_image_map[url] = images
     return url_image_map
 
+# Main logic
 urls = url_input_fields()
-video_clips = []
+video_clips = []  # Initialize video_clips
 
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Dissolve"])
+    transition_option = st.selectbox("Select a Transition:", ["None", "Fade"])
 
     if st.button("Generate Video"):
         final_script = ""
+
         for url, images in url_image_map.items():
+            st.write(f"Processing URL: {url}")
             text = scrape_text_from_url(url)
             summary = generate_summary(text, max_words=150)
             final_script += f"\n{summary}"
+
             for img_url in images:
                 image = download_image_from_url(img_url)
                 if image:
+                    st.image(image, caption=f"Processing {img_url}")
                     temp_image_path = tempfile.mktemp(suffix=".jpg")
                     image.save(temp_image_path)
-                    clip = create_video_clip_with_effect(temp_image_path, effect_option)
-                    if clip:
-                        video_clips.append(clip)
+                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+                    if video_clip:
+                        video_clips.append(video_clip)
 
+        # Process video clips if they exist
         if video_clips:
-            audio_path = generate_audio_with_openai(final_script)
-            output_path = tempfile.mktemp(suffix=".mp4")
-            final_video = create_final_video_with_transitions(video_clips, audio_path, output_path, transition_option)
-            if final_video:
-                st.video(final_video)
-                st.download_button("Download Video", open(final_video, "rb"), "video.mp4")
-                st.download_button("Download Script", final_script, "script.txt")
+            st.write("Generating audio from script...")
+            audio_path = generate_audio_with_openai(final_script, voice="alloy")
+
+            if audio_path:
+                st.write("Combining video clips into final video...")
+                final_video_path = tempfile.mktemp(suffix=".mp4")
+
+                try:
+                    # Create final video with transitions
+                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=
