@@ -55,6 +55,18 @@ def generate_summary(text, max_words):
         logging.error(f"Error generating summary: {e}")
         return ""
 
+# Generate speech using OpenAI TTS
+def generate_audio_with_openai(script, voice="alloy"):
+    try:
+        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
+        audio_path = tempfile.mktemp(suffix=".mp3")
+        with open(audio_path, "wb") as f:
+            f.write(response.content)
+        return audio_path
+    except Exception as e:
+        logging.error(f"Error generating audio: {e}")
+        return None
+
 # Effects functions
 def apply_cartoon_effect(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -114,6 +126,10 @@ def create_final_video_with_moviepy(video_clips, script_audio_path, output_path,
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
+
+            # Extend video duration to match audio length
+            audio_duration = audio.duration
+            combined_clip = combined_clip.loop(duration=audio_duration)
 
         # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -180,16 +196,20 @@ if urls:
                         video_clips.append(video_clip)
 
         if video_clips:
-            st.write("Combining video clips into final video...")
-            final_video_path = tempfile.mktemp(suffix=".mp4")
+            st.write("Generating audio from script...")
+            audio_path = generate_audio_with_openai(final_script, voice="alloy")
 
-            try:
-                # Create final video with MoviePy
-                final_video_path = create_final_video_with_moviepy(video_clips, None, final_video_path)
-                if final_video_path:
-                    st.video(final_video_path)
-                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                    st.download_button("Download Script", final_script, "script.txt")
-            except Exception as e:
-                logging.error(f"Error creating final video: {e}")
-                st.error("Failed to create the final video. Please check the logs.")
+            if audio_path:
+                st.write("Combining video clips into final video...")
+                final_video_path = tempfile.mktemp(suffix=".mp4")
+
+                try:
+                    # Create final video with MoviePy
+                    final_video_path = create_final_video_with_moviepy(video_clips, audio_path, final_video_path)
+                    if final_video_path:
+                        st.video(final_video_path)
+                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                        st.download_button("Download Script", final_script, "script.txt")
+                except Exception as e:
+                    logging.error(f"Error creating final video: {e}")
+                    st.error("Failed to create the final video. Please check the logs.")
