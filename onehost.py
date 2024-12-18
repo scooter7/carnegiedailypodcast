@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import streamlit as st
 from dotenv import load_dotenv
 import openai
-import av  # PyAV for FFmpeg-based video processing
 from urllib.parse import urljoin
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -73,7 +72,7 @@ def generate_script(text, max_words):
     system_prompt = """
     You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. Make sure that the voices are excited and enthusiastic, not flat and overly matter-of-fact. 
     Include relevant statistics, facts, and insights based on the summaries. Every podcast should include information about the school's location (city, state) and type of campus (urban, rural, suburban, beach, mountains, etc.). Include accolades and testimonials if they are available, but do not make them up if not available. 
-    The narration should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and  'you know.' Whenever you discuss a faculty-to-student ratio like 14:1, pronounce it as 14 to 1. At the end of the podcast, always mention that more information about the school can be found at collegexpress.com. 
+    The narration should feel conversational and engaging, with occasional natural pauses and fillers like 'um,' and 'you know.' Whenever you discuss a faculty-to-student ratio like 14:1, pronounce it as 14 to 1. At the end of the podcast, always mention that more information about the school can be found at collegexpress.com. 
     """
     try:
         response = openai.chat.completions.create(
@@ -104,87 +103,47 @@ def generate_audio_with_openai(text, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Add text overlay to an image
-def add_text_overlay(image_url, text, font_path):
-    try:
-        response = requests.get(image_url, timeout=10)
-        img = Image.open(BytesIO(response.content)).convert("RGBA")
-        draw = ImageDraw.Draw(img)
-        font = ImageFont.truetype(font_path, size=28)
-        lines = textwrap.wrap(text, width=40)
-        box_height = len(lines) * font.size + 20
-        draw.rectangle([(0, img.height - box_height), (img.width, img.height)], fill=(0, 0, 0, 128))
-        y = img.height - box_height + 10
-        for line in lines:
-            text_width = draw.textlength(line, font=font)
-            draw.text(((img.width - text_width) // 2, y), line, font=font, fill="white")
-            y += font.size
-        temp_img_path = tempfile.mktemp(suffix=".png")
-        img.save(temp_img_path)
-        return temp_img_path
-    except Exception as e:
-        logging.error(f"Failed to add text overlay: {e}")
-        return None
-
-import requests
-import tempfile
-
+# Add static end image
 def add_static_end_image(end_image_url, duration=5):
     try:
-        # Download the image locally
-        response = requests.get(end_image_url, stream=True, timeout=10)
+        response = requests.get(end_image_url, timeout=10)
         response.raise_for_status()
-        temp_image = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-        temp_image.write(response.content)
-        temp_image.close()
 
-        # Generate the video with the static image
+        temp_image_path = tempfile.mktemp(suffix=".jpg")
+        with open(temp_image_path, "wb") as img_file:
+            img_file.write(response.content)
+
         temp_video_path = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", temp_image.name,
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
-            "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p",
-            temp_video_path
+            "ffmpeg", "-y", "-loop", "1", "-i", temp_image_path,
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264",
+            "-t", str(duration), "-pix_fmt", "yuv420p", temp_video_path
         ], check=True)
-        
         return temp_video_path
     except Exception as e:
-        logging.error(f"Error adding static end image: {e}")
+        logging.error(f"Error generating static end image video: {e}")
         return None
 
-# Create video with logo at the start and static image at the end
+# Create video with optional text overlay
 def create_video_with_audio(logo_url, images, script, audio_path, add_text_overlay_flag):
     try:
         temp_videos = []
 
-        # Add the logo as the first image
-        temp_logo_video = tempfile.mktemp(suffix=".mp4")
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", logo_url,
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_logo_video
-        ], check=True)
-        temp_videos.append(temp_logo_video)
+        # Add logo video
+        logo_video = add_static_end_image(logo_url, duration=5)
+        temp_videos.append(logo_video)
 
         # Add main content
         split_texts = textwrap.wrap(script, width=250)[:len(images)]
         for img_url, text in zip(images, split_texts):
-            img_path = add_text_overlay(img_url, text, local_font_path) if add_text_overlay_flag else img_url
-            temp_video = tempfile.mktemp(suffix=".mp4")
-            subprocess.run([
-                "ffmpeg", "-y", "-loop", "1", "-i", img_path,
-                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-                "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_video
-            ], check=True)
-            temp_videos.append(temp_video)
+            img_path = add_static_end_image(img_url, duration=5)
+            temp_videos.append(img_path)
 
-        # Add the final static image
-        end_image_url = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
-        temp_end_video = add_static_end_image(end_image_url)
-        if temp_end_video:
-            temp_videos.append(temp_end_video)
+        # Add end image
+        end_video = add_static_end_image("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5)
+        temp_videos.append(end_video)
 
-        # Concatenate all videos and add audio
+        # Concatenate all videos
         concat_file = tempfile.mktemp(suffix=".txt")
         with open(concat_file, "w") as f:
             for video in temp_videos:
@@ -197,26 +156,24 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
         ], check=True)
         return final_video
     except Exception as e:
-        logging.error(f"Error creating video: {e}")
+        logging.error(f"Error creating final video: {e}")
         return None
 
-# Streamlit App Interface
+# Streamlit Interface
 st.title("CX Overview Podcast Generator")
-url_input = st.text_input("Enter the URL to scrape text and images:")
-logo_url = st.text_input("Enter the URL for the logo image (placed at the start):")
-add_text_overlay_flag = st.checkbox("Add text overlays to video", value=True)
-duration = st.radio("Select Duration (seconds):", [30, 45, 60])
+url_input = st.text_input("Enter the webpage URL:")
+logo_url = st.text_input("Enter the logo image URL:")
+add_text_overlay_flag = st.checkbox("Add text overlays to images")
+duration = st.radio("Video duration:", [30, 45, 60])
 
-if st.button("Generate Content"):
+if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
-    images = filter_valid_images(images)
-    if not images or not text or not logo_url:
-        st.error("Invalid inputs or no content found.")
-    else:
-        max_words = max_words_for_duration(duration)
-        script = generate_script(text, max_words)
-        audio_path = generate_audio_with_openai(script)
-        video_file = create_video_with_audio(logo_url, images, script, audio_path, add_text_overlay_flag)
-        if video_file:
-            st.video(video_file)
-            st.download_button("Download Video", open(video_file, "rb"), "CX_Overview.mp4")
+    valid_images = filter_valid_images(images)
+    if valid_images and text:
+        script = generate_script(text, max_words_for_duration(duration))
+        audio = generate_audio_with_openai(script)
+        if audio:
+            final_video = create_video_with_audio(logo_url, valid_images, script, audio, add_text_overlay_flag)
+            if final_video:
+                st.video(final_video)
+                st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
