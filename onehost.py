@@ -159,8 +159,23 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Ensure even dimensions for the image
-        img_path = ensure_even_dimensions(img_path)
+        # Open the image
+        img = Image.open(img_path)
+
+        # Ensure even dimensions and preserve aspect ratio
+        original_width, original_height = img.size
+        target_size = max(original_width, original_height)
+
+        # Create a new black (RGB) canvas and paste the image in the center
+        padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
+        x_offset = (target_size - original_width) // 2
+        y_offset = (target_size - original_height) // 2
+        padded_img.paste(img, (x_offset, y_offset))
+
+        # Save the padded image to a temporary file
+        padded_img_path = tempfile.mktemp(suffix=".png")
+        padded_img.save(padded_img_path)
+        img_path = padded_img_path
 
         # Build filter and transition options
         filters = {
