@@ -41,7 +41,7 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid images
-def filter_valid_images(image_urls, min_width=400, min_height=300):
+def filter_valid_images(image_urls, min_width=200, min_height=200):
     valid_images = []
     for url in image_urls:
         try:
@@ -69,7 +69,7 @@ def scrape_images_and_text(url):
 def generate_script(text, max_words):
     system_prompt = """
     You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
-    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.'
+    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.' Don't be afraid to show emotion and enthusiasm!
     """
     try:
         response = openai.chat.completions.create(
