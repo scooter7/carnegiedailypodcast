@@ -128,25 +128,36 @@ def add_text_overlay(image_path, text):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Generate video clip
-def generate_video_clip(image_url, duration, text=None, filter_chain="", transition_chain=""):
+# Combine videos and audio
+def create_final_video(video_clips, audio_path):
     try:
-        local_image_path = download_image(image_url)
-        if text:
-            local_image_path = add_text_overlay(local_image_path, text)
+        # Validate video clips
+        if not video_clips or None in video_clips:
+            raise ValueError("One or more video clips are invalid.")
 
-        temp_video = tempfile.mktemp(suffix=".mp4")
-        vf_chain = ",".join(filter(None, [filter_chain, transition_chain]))
+        # Validate audio path
+        if not audio_path or not os.path.exists(audio_path):
+            raise ValueError("Audio file is invalid or does not exist.")
+
+        # Prepare concat file
+        concat_file = tempfile.mktemp(suffix=".txt")
+        with open(concat_file, "w") as f:
+            for clip in video_clips:
+                f.write(f"file '{clip}'\n")
+
+        # Combine video and audio
+        final_video = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", local_image_path, "-t", str(duration),
-            "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
+            "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
         ], check=True)
-        return temp_video
+
+        return final_video
     except Exception as e:
-        logging.error(f"Error generating video clip: {e}")
+        logging.error(f"Error creating final video: {e}")
         return None
 
-# Streamlit Interface
+# Main Streamlit Interface
 st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
@@ -158,13 +169,55 @@ duration = st.radio("Video Duration (seconds):", [30, 45, 60])
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
     valid_images = filter_valid_images(images)
+
     if valid_images and text:
         script = generate_script(text, max_words_for_duration(duration))
-        audio = generate_audio_with_openai(script)
-        if audio:
-            final_video = generate_video_clip(logo_url, duration, script, filter_option, transition_option)
-            st.video(final_video)
-            st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
-            st.download_button("Download Script", script, "script.txt")
+        audio_path = generate_audio_with_openai(script)
+
+        if audio_path:
+            st.info("Generating video clips...")
+            video_clips = []
+            try:
+                # Generate logo clip
+                logo_clip = generate_video_clip(logo_url, 5, None, filter_option, transition_option)
+                if logo_clip:
+                    video_clips.append(logo_clip)
+                else:
+                    raise ValueError("Failed to generate logo clip.")
+
+                # Generate main image clips
+                split_texts = textwrap.wrap(script, width=200)
+                per_image_duration = duration // (len(valid_images) + 2)
+
+                for idx, img_url in enumerate(valid_images):
+                    text_overlay = split_texts[idx] if add_text_overlay_flag and idx < len(split_texts) else None
+                    image_clip = generate_video_clip(img_url, per_image_duration, text_overlay, filter_option, transition_option)
+                    if image_clip:
+                        video_clips.append(image_clip)
+                    else:
+                        logging.warning(f"Failed to generate video clip for image: {img_url}")
+
+                # Generate end clip
+                end_image_url = "https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg"
+                end_clip = generate_video_clip(end_image_url, 5, None, filter_option, transition_option)
+                if end_clip:
+                    video_clips.append(end_clip)
+                else:
+                    raise ValueError("Failed to generate end clip.")
+
+                # Combine all clips and audio
+                st.info("Combining video and audio...")
+                final_video = create_final_video(video_clips, audio_path)
+
+                if final_video:
+                    st.video(final_video)
+                    st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
+                    st.download_button("Download Script", script, "script.txt")
+                else:
+                    st.error("Failed to generate the final video.")
+            except Exception as e:
+                st.error(f"An error occurred: {e}")
+        else:
+            st.error("Failed to generate audio.")
     else:
         st.error("No valid content found!")
