@@ -131,24 +131,31 @@ def add_text_overlay(image_path, text):
 
 # Ensure even dimensions for videos
 def ensure_even_dimensions(image_path):
+    """
+    Ensure image dimensions are even without altering the aspect ratio.
+    Pads the image with black borders if necessary.
+    """
     try:
         img = Image.open(image_path)
         width, height = img.size
 
-        # Calculate new dimensions (even values)
+        # Calculate even dimensions
         new_width = width if width % 2 == 0 else width + 1
         new_height = height if height % 2 == 0 else height + 1
 
-        # Create a new image with even dimensions if needed
-        if (new_width, new_height) != (width, height):
-            padded_img = Image.new("RGB", (new_width, new_height), (0, 0, 0))
-            padded_img.paste(img, (0, 0))  # Paste original image at the top-left corner
-            temp_img_path = tempfile.mktemp(suffix=".png")
-            padded_img.save(temp_img_path)
-            return temp_img_path
-        return image_path
+        # Create a new image with the even dimensions
+        padded_img = Image.new("RGB", (new_width, new_height), (0, 0, 0))
+        # Center the original image on the padded image
+        x_offset = (new_width - width) // 2
+        y_offset = (new_height - height) // 2
+        padded_img.paste(img, (x_offset, y_offset))
+
+        # Save the padded image to a temporary file
+        temp_img_path = tempfile.mktemp(suffix=".png")
+        padded_img.save(temp_img_path)
+        return temp_img_path
     except Exception as e:
-        logging.error(f"Error ensuring even dimensions: {e}")
+        logging.error(f"Error ensuring even dimensions while preserving aspect ratio: {e}")
         return None
 
 # Add dropdown for video effects
@@ -171,7 +178,7 @@ def generate_video_clip_with_effects(image_url, duration, text=None, filter_opti
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Ensure even dimensions
+        # Ensure even dimensions and maintain aspect ratio
         img_path = ensure_even_dimensions(img_path)
         if not img_path:
             raise ValueError("Failed to process image dimensions.")
@@ -218,7 +225,6 @@ def generate_video_clip_with_effects(image_url, duration, text=None, filter_opti
         logging.error(f"Error generating video clip with effect: {e}")
         return None
 
-# Combine videos and audio
 # Combine videos and audio
 def create_final_video(video_clips, audio_path, end_image_url, duration_per_clip, filter_option, transition_option):
     try:
