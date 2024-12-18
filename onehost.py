@@ -37,7 +37,7 @@ download_font(font_url, local_font_path)
 
 # Calculate word limit based on duration
 def max_words_for_duration(duration_seconds):
-    wpm = 150  # Words per minute
+    wpm = 150
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid images
@@ -69,7 +69,7 @@ def scrape_images_and_text(url):
 def generate_script(text, max_words):
     system_prompt = """
     You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
-    Include relevant statistics, location, campus type, and accolades. End with 'more information can be found at collegexpress.com.'
+    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.'
     """
     try:
         response = openai.chat.completions.create(
@@ -96,19 +96,28 @@ def generate_audio_with_openai(text, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Generate video clip with optional text overlay
-def generate_video_clip(image_url, duration, text=None, filter_option="None"):
+# Generate video clip
+def generate_video_clip(image_url, duration, text=None, filter_option="None", transition=None):
     temp_video = tempfile.mktemp(suffix=".mp4")
-    filters = {"None": "", "Grayscale": "format=gray", "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"}
-    vf = filters.get(filter_option, "scale=iw:ih")
+    vf_filters = {
+        "None": "",
+        "Grayscale": "format=gray",
+        "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
+    }
+    transitions = {
+        "None": "",
+        "Fade": "fade=t=in:st=0:d=1",
+        "Zoom": "zoompan=z='zoom+0.01':d=25"
+    }
+    vf = f"{vf_filters.get(filter_option, '')},{transitions.get(transition, '')}".strip(",")
     overlay_path = add_text_overlay(image_url, text) if text else image_url
     subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", overlay_path, "-vf", vf,
-        "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
+        "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
+        "-vf", vf, "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
     ], check=True)
     return temp_video
 
-# Add text overlay to image
+# Add text overlay
 def add_text_overlay(image_url, text):
     try:
         response = requests.get(image_url, timeout=10)
@@ -128,13 +137,13 @@ def add_text_overlay(image_url, text):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Combine video clips and audio
-def create_final_video(logo_url, images, script, audio_path, duration, add_text_overlay_flag, filter_option):
-    temp_videos = [generate_video_clip(logo_url, 5, None, filter_option)]  # Logo at start
+# Combine videos and audio
+def create_final_video(logo_url, images, script, audio_path, duration, filter_option, transition, add_text_overlay_flag):
+    temp_videos = [generate_video_clip(logo_url, 5, None, filter_option, transition)]
     split_texts = textwrap.wrap(script, width=250)[:len(images)]
     for img_url, text in zip(images, split_texts):
-        temp_videos.append(generate_video_clip(img_url, duration // len(images), text if add_text_overlay_flag else None, filter_option))
-    temp_videos.append(generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5))  # cx.jpg at end
+        temp_videos.append(generate_video_clip(img_url, duration // len(images), text if add_text_overlay_flag else None, filter_option, transition))
+    temp_videos.append(generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5, None, filter_option, transition))
     concat_file = tempfile.mktemp(suffix=".txt")
     with open(concat_file, "w") as f:
         for video in temp_videos:
@@ -152,6 +161,7 @@ url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add text overlays to images")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
+transition_option = st.selectbox("Select an Image Transition:", ["None", "Fade", "Zoom"])
 duration = st.radio("Video Duration (seconds):", [30, 45, 60])
 
 if st.button("Generate Podcast"):
@@ -161,7 +171,7 @@ if st.button("Generate Podcast"):
         script = generate_script(text, max_words_for_duration(duration))
         audio = generate_audio_with_openai(script)
         if audio:
-            final_video = create_final_video(logo_url, valid_images, script, audio, duration, add_text_overlay_flag, filter_option)
+            final_video = create_final_video(logo_url, valid_images, script, audio, duration, filter_option, transition_option, add_text_overlay_flag)
             st.video(final_video)
             st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
             st.download_button("Download Script", script, "script.txt")
