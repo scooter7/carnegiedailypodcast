@@ -158,7 +158,7 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         if not img_path:
             raise ValueError("Failed to download image.")
 
-        # Add text overlay if required
+        # Add text overlay if specified
         if text:
             img_path = add_text_overlay(img_path, text)
 
@@ -196,7 +196,8 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         temp_video = tempfile.mktemp(suffix=".mp4")
         ffmpeg_command = [
             "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-vf", vf_chain if vf_chain else "null", "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "-vf", vf_chain if vf_chain else "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
         ]
 
         # Run FFmpeg and validate output
@@ -205,6 +206,9 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
             raise ValueError("FFmpeg failed to generate a valid video clip.")
         
         return temp_video
+    except subprocess.CalledProcessError as ffmpeg_error:
+        logging.error(f"FFmpeg process failed: {ffmpeg_error.stderr}")
+        return None
     except Exception as e:
         logging.error(f"Error generating video clip: {e}")
         return None
