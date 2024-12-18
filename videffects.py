@@ -119,17 +119,29 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
 # Function to generate the final video
 def create_final_video_with_moviepy(video_clips, script_audio_path, output_path, fps=24):
     try:
-        # Combine video clips
-        combined_clip = concatenate_videoclips(video_clips, method="compose")
-
-        # Add audio if provided
+        # Check if audio is available
+        audio_duration = None
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
-            combined_clip = combined_clip.set_audio(audio)
-
-            # Extend video duration to match audio length
             audio_duration = audio.duration
-            combined_clip = combined_clip.loop(duration=audio_duration)
+        else:
+            logging.warning("No audio provided. Video will be silent.")
+
+        # Determine total video duration
+        total_video_duration = audio_duration if audio_duration else sum(clip.duration for clip in video_clips)
+
+        # Repeat clips to match the total duration if audio is present
+        if audio_duration:
+            repeated_clips = []
+            while sum(clip.duration for clip in repeated_clips) < audio_duration:
+                repeated_clips.extend(video_clips)
+            combined_clip = concatenate_videoclips(repeated_clips[:len(video_clips)], method="compose")
+        else:
+            combined_clip = concatenate_videoclips(video_clips, method="compose")
+
+        # Add audio to the combined clip
+        if audio_duration:
+            combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -137,6 +149,39 @@ def create_final_video_with_moviepy(video_clips, script_audio_path, output_path,
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
         return None
+
+# Main logic to ensure proper concatenation and audio addition
+if video_clips:
+    st.write("Generating audio from script...")
+    audio_path = generate_audio_with_openai(final_script, voice="alloy")
+
+    if audio_path:
+        st.write("Combining video clips into final video...")
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+
+        try:
+            # Create final video with MoviePy
+            final_video_path = create_final_video_with_moviepy(video_clips, audio_path, final_video_path)
+            if final_video_path:
+                st.video(final_video_path)
+                st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                st.download_button("Download Script", final_script, "script.txt")
+        except Exception as e:
+            logging.error(f"Error creating final video: {e}")
+            st.error("Failed to create the final video. Please check the logs.")
+    else:
+        st.write("No audio generated. Creating a silent video...")
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+
+        try:
+            final_video_path = create_final_video_with_moviepy(video_clips, None, final_video_path)
+            if final_video_path:
+                st.video(final_video_path)
+                st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                st.download_button("Download Script", final_script, "script.txt")
+        except Exception as e:
+            logging.error(f"Error creating silent video: {e}")
+            st.error("Failed to create the silent video. Please check the logs.")
 
 # Streamlit UI
 st.title("Custom Video and Script Generator")
