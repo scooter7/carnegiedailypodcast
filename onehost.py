@@ -41,17 +41,18 @@ def max_words_for_duration(duration_seconds):
     return int((duration_seconds / 60) * wpm)
 
 # Filter valid images
-def filter_valid_images(image_urls, min_width=200, min_height=200):
+def filter_valid_images(image_urls, min_width=100, min_height=100):
     valid_images = []
     for url in image_urls:
         try:
             response = requests.get(url, timeout=10)
             img = Image.open(BytesIO(response.content))
-            if img.width >= min_width and img.height >= min_height and img.mode in ["RGB", "RGBA"]:
+            if img.width >= min_width and img.height >= min_height and img.mode in ["RGB", "RGBA", "P"]:
                 valid_images.append(url)
         except Exception as e:
             logging.warning(f"Invalid image {url}: {e}")
     return valid_images
+
 
 # Scrape images and text
 def scrape_images_and_text(url):
@@ -241,10 +242,10 @@ def extend_video_clip(video_path, target_duration):
 st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
-add_text_overlay_flag = st.checkbox("Add Text Overlays to Images")
+add_text_overlay_flag = st.checkbox("Add Text Overlays (display text below video)")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
-clip_duration = st.radio("Clip Duration (seconds):", [30, 45, 60])  # Individual clip duration
+clip_duration = st.radio("Clip Duration (seconds):", [5, 10, 15])  # Individual clip duration
 
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
@@ -272,7 +273,7 @@ if st.button("Generate Podcast"):
                 generate_video_clip(logo_url, 5, None, filter_option, transition_option)
             ]
             for idx, img_url in enumerate(valid_images[:int(audio_duration / clip_duration)]):
-                video_clips.append(generate_video_clip(img_url, clip_duration, script if add_text_overlay_flag else None, filter_option, transition_option))
+                video_clips.append(generate_video_clip(img_url, clip_duration, None, filter_option, transition_option))
             end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", clip_duration)
             video_clips.append(end_clip)
 
@@ -281,6 +282,8 @@ if st.button("Generate Podcast"):
             final_video = create_final_video(video_clips, audio_path)
             if final_video:
                 st.video(final_video)
+                if add_text_overlay_flag:
+                    st.text_area("Podcast Script", script, height=300)
                 st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
                 st.download_button("Download Script", script, "script.txt")
             else:
