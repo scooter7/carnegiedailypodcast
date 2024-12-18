@@ -92,20 +92,20 @@ def process_image(image_path, effect):
         return image
 
 # Function to create a video clip from an image
-def create_video_clip_with_effect(image_path, effect, duration=5):
+def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
         image = cv2.imread(image_path)
         processed_image = process_image(image_path, effect)
         output_path = tempfile.mktemp(suffix=".jpg")
         cv2.imwrite(output_path, processed_image)
-        clip = ImageClip(output_path).set_duration(duration)
+        clip = ImageClip(output_path).set_duration(duration).set_fps(fps)
         return clip
     except Exception as e:
         logging.error(f"Error creating video clip with effect: {e}")
         return None
 
 # Function to generate the final video
-def create_final_video_with_moviepy(video_clips, script_audio_path, output_path):
+def create_final_video_with_moviepy(video_clips, script_audio_path, output_path, fps=24):
     try:
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
@@ -116,7 +116,7 @@ def create_final_video_with_moviepy(video_clips, script_audio_path, output_path)
             combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video
-        combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
