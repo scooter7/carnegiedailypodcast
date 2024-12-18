@@ -128,14 +128,11 @@ def add_text_overlay(image_path, text):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Generate video clip with filters and transitions
-# Resize image to ensure dimensions are divisible by 2
+# Ensure even dimensions for videos
 def ensure_even_dimensions(image_path):
     try:
         img = Image.open(image_path)
         width, height = img.size
-
-        # Adjust dimensions to be divisible by 2
         new_width = width if width % 2 == 0 else width - 1
         new_height = height if height % 2 == 0 else height - 1
 
@@ -149,7 +146,7 @@ def ensure_even_dimensions(image_path):
         logging.error(f"Error adjusting image dimensions: {e}")
         return None
 
-# Generate video clip with filters and transitions
+# Generate video clip
 def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
     try:
         img_path = download_image(image_url)
@@ -159,7 +156,6 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Ensure dimensions are divisible by 2
         img_path = ensure_even_dimensions(img_path)
 
         filters = {
@@ -176,10 +172,11 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
         vf_chain = ",".join(filter(None, [filters[filter_option], transitions[transition]]))
 
         temp_video = tempfile.mktemp(suffix=".mp4")
-        subprocess.run([
+        ffmpeg_command = [
             "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
-        ], check=True)
+            "-vf", vf_chain if vf_chain else "null", "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+        ]
+        subprocess.run(ffmpeg_command, check=True)
         return temp_video
     except Exception as e:
         logging.error(f"Error generating video clip: {e}")
@@ -228,7 +225,7 @@ if st.button("Generate Podcast"):
                 generate_video_clip(logo_url, 5, None, filter_option, transition_option)
             ]
             for idx, img_url in enumerate(valid_images[:duration // 5]):
-                video_clips.append(generate_video_clip(img_url, 5, script, filter_option, transition_option))
+                video_clips.append(generate_video_clip(img_url, 5, script if add_text_overlay_flag else None, filter_option, transition_option))
             end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5)
             video_clips.append(end_clip)
 
