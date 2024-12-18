@@ -19,3 +19,4 @@ Pillow
 cairosvg
 pyav
 tqdm
+opencv-python
