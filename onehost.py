@@ -111,18 +111,28 @@ def generate_audio_with_openai(text, voice="alloy"):
 
 # Convert image to video
 def image_to_video(image_path, duration=2):
+    # Ensure the file exists and is a valid image
+    try:
+        with Image.open(image_path) as img:
+            img.verify()  # Validate that the file is an image
+    except Exception as e:
+        logging.error(f"Invalid image file: {image_path}. Error: {e}")
+        raise ValueError(f"Invalid image file: {image_path}")
+
     temp_video_path = tempfile.mktemp(suffix=".mp4")
     try:
-        subprocess.run(
+        # Run FFmpeg command to convert the image to video
+        result = subprocess.run(
             [
                 "ffmpeg", "-y", "-loop", "1", "-i", image_path,
                 "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video_path
             ],
-            check=True
+            capture_output=True, text=True, check=True
         )
+        logging.info(f"FFmpeg output: {result.stdout}")
     except subprocess.CalledProcessError as e:
-        logging.error(f"Error converting image to video: {e}")
-        raise
+        logging.error(f"FFmpeg error in image_to_video: {e.stderr}")
+        raise RuntimeError(f"FFmpeg failed with error: {e.stderr}")
     return temp_video_path
 
 # Add fade effect for transitions
