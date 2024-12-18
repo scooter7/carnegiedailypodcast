@@ -39,9 +39,10 @@ def download_image_from_url(url):
 
 # Function to generate a summary using OpenAI
 def generate_summary(text, max_words):
-    system_prompt = (
-        "You are a podcast host. Summarize the text narratively. Include key details and end with an engaging note."
-    )
+     system_prompt = """
+    You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
+    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.' Don't be afraid to show emotion and enthusiasm!
+    """
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
