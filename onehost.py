@@ -96,32 +96,23 @@ def generate_audio_with_openai(text, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Generate video clip
-def generate_video_clip(image_url, duration, text=None, filter_option="None", transition=None):
-    temp_video = tempfile.mktemp(suffix=".mp4")
-    vf_filters = {
-        "None": "",
-        "Grayscale": "format=gray",
-        "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
-    }
-    transitions = {
-        "None": "",
-        "Fade": "fade=t=in:st=0:d=1",
-        "Zoom": "zoompan=z='zoom+0.01':d=25"
-    }
-    vf = f"{vf_filters.get(filter_option, '')},{transitions.get(transition, '')}".strip(",")
-    overlay_path = add_text_overlay(image_url, text) if text else image_url
-    subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
-        "-vf", vf, "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
-    ], check=True)
-    return temp_video
-
-# Add text overlay
-def add_text_overlay(image_url, text):
+# Helper function to download an image
+def download_image(image_url):
     try:
         response = requests.get(image_url, timeout=10)
-        img = Image.open(BytesIO(response.content)).convert("RGBA")
+        response.raise_for_status()
+        temp_img_path = tempfile.mktemp(suffix=".jpg")
+        with open(temp_img_path, "wb") as f:
+            f.write(response.content)
+        return temp_img_path
+    except Exception as e:
+        logging.error(f"Error downloading image: {e}")
+        return None
+
+# Add text overlay
+def add_text_overlay(image_path, text):
+    try:
+        img = Image.open(image_path).convert("RGBA")
         draw = ImageDraw.Draw(img)
         font = ImageFont.truetype(local_font_path, size=28)
         lines = textwrap.wrap(text, width=40)
@@ -137,43 +128,112 @@ def add_text_overlay(image_url, text):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Combine videos and audio
-def create_final_video(logo_url, images, script, audio_path, duration, filter_option, transition, add_text_overlay_flag):
-    temp_videos = [generate_video_clip(logo_url, 5, None, filter_option, transition)]
-    split_texts = textwrap.wrap(script, width=250)[:len(images)]
-    for img_url, text in zip(images, split_texts):
-        temp_videos.append(generate_video_clip(img_url, duration // len(images), text if add_text_overlay_flag else None, filter_option, transition))
-    temp_videos.append(generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5, None, filter_option, transition))
-    concat_file = tempfile.mktemp(suffix=".txt")
-    with open(concat_file, "w") as f:
-        for video in temp_videos:
-            f.write(f"file '{video}'\n")
-    final_video = "final_video.mp4"
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
-        "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
-    ], check=True)
-    return final_video
+# Generate video clip with filters and transitions
+# Resize image to ensure dimensions are divisible by 2
+def ensure_even_dimensions(image_path):
+    try:
+        img = Image.open(image_path)
+        width, height = img.size
 
-# Streamlit Interface
+        # Adjust dimensions to be divisible by 2
+        new_width = width if width % 2 == 0 else width - 1
+        new_height = height if height % 2 == 0 else height - 1
+
+        if (new_width, new_height) != (width, height):
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            temp_img_path = tempfile.mktemp(suffix=".png")
+            img.save(temp_img_path)
+            return temp_img_path
+        return image_path
+    except Exception as e:
+        logging.error(f"Error adjusting image dimensions: {e}")
+        return None
+
+# Generate video clip with filters and transitions
+def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
+    try:
+        img_path = download_image(image_url)
+        if not img_path:
+            raise ValueError("Failed to download image.")
+
+        if text:
+            img_path = add_text_overlay(img_path, text)
+
+        # Ensure dimensions are divisible by 2
+        img_path = ensure_even_dimensions(img_path)
+
+        filters = {
+            "None": "",
+            "Grayscale": "format=gray",
+            "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
+        }
+        transitions = {
+            "None": "",
+            "Fade": "fade=t=in:st=0:d=1",
+            "Zoom": "zoompan=z='zoom+0.01':d=25"
+        }
+
+        vf_chain = ",".join(filter(None, [filters[filter_option], transitions[transition]]))
+
+        temp_video = tempfile.mktemp(suffix=".mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
+            "-vf", vf_chain, "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+        ], check=True)
+        return temp_video
+    except Exception as e:
+        logging.error(f"Error generating video clip: {e}")
+        return None
+
+# Combine videos and audio
+def create_final_video(video_clips, audio_path):
+    try:
+        if not video_clips or None in video_clips:
+            raise ValueError("One or more video clips are invalid.")
+
+        concat_file = tempfile.mktemp(suffix=".txt")
+        with open(concat_file, "w") as f:
+            for clip in video_clips:
+                f.write(f"file '{clip}'\n")
+
+        final_video = tempfile.mktemp(suffix=".mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
+            "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
+        ], check=True)
+        return final_video
+    except Exception as e:
+        logging.error(f"Error creating final video: {e}")
+        return None
+
+# Main Streamlit Interface
 st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
-add_text_overlay_flag = st.checkbox("Add text overlays to images")
+add_text_overlay_flag = st.checkbox("Add Text Overlays to Images")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
-transition_option = st.selectbox("Select an Image Transition:", ["None", "Fade", "Zoom"])
+transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
 duration = st.radio("Video Duration (seconds):", [30, 45, 60])
 
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
     valid_images = filter_valid_images(images)
+
     if valid_images and text:
         script = generate_script(text, max_words_for_duration(duration))
-        audio = generate_audio_with_openai(script)
-        if audio:
-            final_video = create_final_video(logo_url, valid_images, script, audio, duration, filter_option, transition_option, add_text_overlay_flag)
-            st.video(final_video)
-            st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
-            st.download_button("Download Script", script, "script.txt")
-    else:
-        st.error("No valid content found!")
+        audio_path = generate_audio_with_openai(script)
+
+        if audio_path:
+            video_clips = [
+                generate_video_clip(logo_url, 5, None, filter_option, transition_option)
+            ]
+            for idx, img_url in enumerate(valid_images[:duration // 5]):
+                video_clips.append(generate_video_clip(img_url, 5, script, filter_option, transition_option))
+            end_clip = generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5)
+            video_clips.append(end_clip)
+
+            final_video = create_final_video(video_clips, audio_path)
+            if final_video:
+                st.video(final_video)
+                st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
+                st.download_button("Download Script", script, "script.txt")
