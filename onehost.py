@@ -105,30 +105,55 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None"):
         "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
     }
     vf = vf_filters.get(filter_option, "")
-    overlay_path = add_text_overlay(image_url, text) if text else image_url
-    subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
-        "-vf", vf, "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
-    ], check=True)
+    overlay_path = add_text_overlay(image_url, text) if text else download_image(image_url)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
+            "-vf", vf if vf else "scale=1280:720", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error: {e}")
+        raise
     return temp_video
+
+# Download image to handle URLs for FFmpeg compatibility
+def download_image(image_url):
+    try:
+        response = requests.get(image_url, timeout=10)
+        temp_img_path = tempfile.mktemp(suffix=".jpg")
+        with open(temp_img_path, "wb") as f:
+            f.write(response.content)
+        return temp_img_path
+    except Exception as e:
+        logging.error(f"Failed to download image {image_url}: {e}")
+        return None
 
 # Add zoom effect for transitions
 def add_zoom_effect(image_url, duration):
     temp_video = tempfile.mktemp(suffix="_zoom.mp4")
-    subprocess.run([
-        "ffmpeg", "-y", "-loop", "1", "-i", image_url,
-        "-vf", "zoompan=z='zoom+0.01':d=25", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
-    ], check=True)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", download_image(image_url),
+            "-vf", "zoompan=z='zoom+0.01':d=25", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error in zoom effect: {e}")
+        raise
     return temp_video
 
 # Add fade effect for transitions
 def add_fade_effect(previous_video, next_image_url, duration):
     temp_fade_video = tempfile.mktemp(suffix="_fade.mp4")
-    subprocess.run([
-        "ffmpeg", "-y", "-i", previous_video, "-loop", "1", "-i", next_image_url,
-        "-filter_complex", f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset=0", 
-        "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_fade_video
-    ], check=True)
+    next_image_path = download_image(next_image_url)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", previous_video, "-loop", "1", "-i", next_image_path,
+            "-filter_complex", f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset=0", 
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_fade_video
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error in fade effect: {e}")
+        raise
     return temp_fade_video
 
 # Add text overlay
@@ -152,13 +177,19 @@ def add_text_overlay(image_url, text):
         return None
 
 # Combine videos and audio
-def create_final_video(logo_url, images, script, audio_path, duration, filter_option, add_text_overlay_flag):
+def create_final_video(logo_url, images, script, audio_path, duration, filter_option, add_text_overlay_flag, transition_option):
     temp_videos = [generate_video_clip(logo_url, 5, None, filter_option)]
     split_texts = textwrap.wrap(script, width=250)[:len(images)]
     for i, img_url in enumerate(images):
         if i > 0:
-            transition_video = add_fade_effect(temp_videos[-1], img_url, 2) if filter_option == "Fade" else add_zoom_effect(images[i - 1], 2)
-            temp_videos.append(transition_video)
+            if transition_option == "Fade":
+                transition_video = add_fade_effect(temp_videos[-1], img_url, 2)
+            elif transition_option == "Zoom":
+                transition_video = add_zoom_effect(images[i - 1], 2)
+            else:
+                transition_video = None
+            if transition_video:
+                temp_videos.append(transition_video)
         temp_videos.append(generate_video_clip(img_url, duration // len(images), split_texts[i] if add_text_overlay_flag else None, filter_option))
     temp_videos.append(generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5, None, filter_option))
     concat_file = tempfile.mktemp(suffix=".txt")
@@ -166,10 +197,14 @@ def create_final_video(logo_url, images, script, audio_path, duration, filter_op
         for video in temp_videos:
             f.write(f"file '{video}'\n")
     final_video = "final_video.mp4"
-    subprocess.run([
-        "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
-        "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
-    ], check=True)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_file, "-i", audio_path,
+            "-c:v", "libx264", "-c:a", "aac", "-shortest", final_video
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error in final video creation: {e}")
+        raise
     return final_video
 
 # Streamlit Interface
@@ -177,7 +212,8 @@ st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add text overlays to images")
-filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia", "Fade"])
+filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
+transition_option = st.selectbox("Select Transition Effect:", ["None", "Fade", "Zoom"])
 duration = st.radio("Video Duration (seconds):", [30, 45, 60])
 
 if st.button("Generate Podcast"):
@@ -187,7 +223,7 @@ if st.button("Generate Podcast"):
         script = generate_script(text, max_words_for_duration(duration))
         audio = generate_audio_with_openai(script)
         if audio:
-            final_video = create_final_video(logo_url, valid_images, script, audio, duration, filter_option, add_text_overlay_flag)
+            final_video = create_final_video(logo_url, valid_images, script, audio, duration, filter_option, add_text_overlay_flag, transition_option)
             st.video(final_video)
             st.download_button("Download Video", open(final_video, "rb"), "CX_Overview.mp4")
             st.download_button("Download Script", script, "script.txt")
