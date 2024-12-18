@@ -116,9 +116,19 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         logging.error(f"Error creating video clip with effect: {e}")
         return None
 
-# Function to generate the final video
-def create_final_video_with_moviepy(video_clips, script_audio_path, output_path, fps=24):
+# Function to generate the final video with transitions
+def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
+        # Apply transitions between clips
+        if transition_type == "Fade":
+            video_clips = [
+                clip.crossfadein(1) if i > 0 else clip
+                for i, clip in enumerate(video_clips)
+            ]
+        elif transition_type == "Slide":
+            # Implement a sliding transition effect here if required
+            pass
+
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
 
@@ -176,6 +186,7 @@ video_clips = []  # Initialize video_clips
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
+    transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
 
     if st.button("Generate Video"):
         final_script = ""
@@ -206,8 +217,8 @@ if urls:
                 final_video_path = tempfile.mktemp(suffix=".mp4")
 
                 try:
-                    # Create final video with MoviePy
-                    final_video_path = create_final_video_with_moviepy(video_clips, audio_path, final_video_path)
+                    # Create final video with transitions
+                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=transition_option)
                     if final_video_path:
                         st.video(final_video_path)
                         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
@@ -220,7 +231,7 @@ if urls:
                 final_video_path = tempfile.mktemp(suffix=".mp4")
 
                 try:
-                    final_video_path = create_final_video_with_moviepy(video_clips, None, final_video_path)
+                    final_video_path = create_final_video_with_transitions(video_clips, None, final_video_path, transition_type=transition_option)
                     if final_video_path:
                         st.video(final_video_path)
                         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
