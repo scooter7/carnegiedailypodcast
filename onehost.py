@@ -154,7 +154,7 @@ effect_option = st.selectbox(
 )
 
 # Updated generate_video_clip function with effects
-def generate_video_clip_with_effects(image_url, duration, text=None, filter_option="None", transition="None", effect_option="None"):
+def generate_video_clip_with_effects(image_url, duration, text=None, filter_option="None", transition_option="None", effect_option="None"):
     try:
         duration = max(1, round(duration, 2))  # Ensure minimum duration
 
@@ -185,20 +185,35 @@ def generate_video_clip_with_effects(image_url, duration, text=None, filter_opti
 
         # Define filters based on selected effect
         effects = {
-            "None": "",
+            "None": None,
             "Cartoon": "geq=lum='p(X,Y)':cb='128+(p(X,Y)-128)*2':cr='128+(p(X,Y)-128)*2'",
             "Sketch": "edgedetect=mode=colormix:high=0.1:low=0.1",
             "Anime": "tblend=all_mode='and'",  # Anime-style blending
         }
-        vf_chain = ",".join(filter(None, [effects.get(effect_option, ""), filter_option]))
+        transitions = {
+            "None": None,
+            "Fade": "fade=t=in:st=0:d=1",
+            "Zoom": "zoompan=z='zoom+0.01':d=25",
+        }
 
-        # Build FFmpeg command to generate video clip
+        # Build the video filter chain
+        vf_chain_parts = [
+            effects.get(effect_option, None),
+            transitions.get(transition_option, None),
+        ]
+        vf_chain = ",".join([part for part in vf_chain_parts if part])
+
+        # Build FFmpeg command
         temp_video = tempfile.mktemp(suffix=".mp4")
         ffmpeg_command = [
-            "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-vf", vf_chain if vf_chain else "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration)
         ]
+        if vf_chain:
+            ffmpeg_command += ["-vf", vf_chain]
+        else:
+            ffmpeg_command += ["-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2"]  # Neutral scaling
+
+        ffmpeg_command += ["-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video]
 
         # Run FFmpeg command
         subprocess.run(ffmpeg_command, check=True)
