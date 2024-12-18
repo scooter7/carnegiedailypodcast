@@ -121,6 +121,16 @@ def add_zoom_effect(image_url, duration):
     ], check=True)
     return temp_video
 
+# Add fade effect for transitions
+def add_fade_effect(previous_video, next_image_url, duration):
+    temp_fade_video = tempfile.mktemp(suffix="_fade.mp4")
+    subprocess.run([
+        "ffmpeg", "-y", "-i", previous_video, "-loop", "1", "-i", next_image_url,
+        "-filter_complex", f"[0:v][1:v]xfade=transition=fade:duration={duration}:offset=0", 
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_fade_video
+    ], check=True)
+    return temp_fade_video
+
 # Add text overlay
 def add_text_overlay(image_url, text):
     try:
@@ -147,7 +157,8 @@ def create_final_video(logo_url, images, script, audio_path, duration, filter_op
     split_texts = textwrap.wrap(script, width=250)[:len(images)]
     for i, img_url in enumerate(images):
         if i > 0:
-            temp_videos.append(add_zoom_effect(images[i - 1], 2))
+            transition_video = add_fade_effect(temp_videos[-1], img_url, 2) if filter_option == "Fade" else add_zoom_effect(images[i - 1], 2)
+            temp_videos.append(transition_video)
         temp_videos.append(generate_video_clip(img_url, duration // len(images), split_texts[i] if add_text_overlay_flag else None, filter_option))
     temp_videos.append(generate_video_clip("https://raw.githubusercontent.com/scooter7/carnegiedailypodcast/main/cx.jpg", 5, None, filter_option))
     concat_file = tempfile.mktemp(suffix=".txt")
@@ -166,7 +177,7 @@ st.title("CX Overview Podcast Generator")
 url_input = st.text_input("Enter the webpage URL:")
 logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add text overlays to images")
-filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
+filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia", "Fade"])
 duration = st.radio("Video Duration (seconds):", [30, 45, 60])
 
 if st.button("Generate Podcast"):
