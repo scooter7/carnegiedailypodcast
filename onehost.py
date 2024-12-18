@@ -128,6 +128,25 @@ def add_fade_effect(previous_video, next_image_url, duration):
         raise
     return temp_fade_video
 
+def generate_video_clip(image_url, duration, text=None, filter_option="None"):
+    temp_video = tempfile.mktemp(suffix=".mp4")
+    vf_filters = {
+        "None": "",
+        "Grayscale": "format=gray",
+        "Sepia": "colorchannelmixer=.393:.769:.189:.349:.686:.168:.272:.534:.131"
+    }
+    vf = vf_filters.get(filter_option, "")
+    overlay_path = add_text_overlay(image_url, text) if text else download_image(image_url)
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", overlay_path,
+            "-vf", vf if vf else "scale=1280:720", "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p", temp_video
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"FFmpeg error: {e}")
+        raise
+    return temp_video
+
 # Combine videos and audio
 def create_final_video(logo_url, images, script, audio_path, duration, filter_option, add_text_overlay_flag, transition_option):
     temp_videos = [generate_video_clip(logo_url, 5, None, filter_option)]
