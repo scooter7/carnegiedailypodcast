@@ -244,7 +244,7 @@ logo_url = st.text_input("Enter the logo image URL:")
 add_text_overlay_flag = st.checkbox("Add Text Overlays to Images")
 filter_option = st.selectbox("Select a Video Filter:", ["None", "Grayscale", "Sepia"])
 transition_option = st.selectbox("Select Image Transition:", ["None", "Fade", "Zoom"])
-clip_duration = st.radio("Clip Duration (seconds):", [5, 10, 15])  # Individual clip duration
+clip_duration = st.radio("Clip Duration (seconds):", [30, 45, 60])  # Individual clip duration
 
 if st.button("Generate Podcast"):
     images, text = scrape_images_and_text(url_input)
