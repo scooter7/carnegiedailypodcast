@@ -5,8 +5,6 @@ from urllib.parse import urljoin
 import openai
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-from moviepy.video.fx.fadein import fadein
-from moviepy.video.fx.fadeout import fadeout
 from PIL import Image
 from io import BytesIO
 import logging
@@ -108,6 +106,7 @@ def process_image(image_path, effect):
 # Function to create a video clip from an image
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
+        image = cv2.imread(image_path)
         processed_image = process_image(image_path, effect)
         output_path = tempfile.mktemp(suffix=".jpg")
         cv2.imwrite(output_path, processed_image)
@@ -123,9 +122,12 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         # Apply transitions between clips
         if transition_type == "Fade":
             video_clips = [
-                fadein(clip, 1).fadeout(1) if i < len(video_clips) - 1 else fadein(clip, 1)
+                clip.crossfadein(1) if i > 0 else clip
                 for i, clip in enumerate(video_clips)
             ]
+        elif transition_type == "Slide":
+            # Implement a sliding transition effect here if required
+            pass
 
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
@@ -134,6 +136,10 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
+
+            # Extend video duration to match audio length
+            audio_duration = audio.duration
+            combined_clip = combined_clip.loop(duration=audio_duration)
 
         # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -180,7 +186,7 @@ video_clips = []  # Initialize video_clips
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade"])
+    transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
 
     if st.button("Generate Video"):
         final_script = ""
@@ -212,4 +218,26 @@ if urls:
 
                 try:
                     # Create final video with transitions
-                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=
+                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=transition_option)
+                    if final_video_path:
+                        st.video(final_video_path)
+                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                        st.download_button("Download Script", final_script, "script.txt")
+                except Exception as e:
+                    logging.error(f"Error creating final video: {e}")
+                    st.error("Failed to create the final video. Please check the logs.")
+            else:
+                st.write("No audio generated. Creating a silent video...")
+                final_video_path = tempfile.mktemp(suffix=".mp4")
+
+                try:
+                    final_video_path = create_final_video_with_transitions(video_clips, None, final_video_path, transition_type=transition_option)
+                    if final_video_path:
+                        st.video(final_video_path)
+                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                        st.download_button("Download Script", final_script, "script.txt")
+                except Exception as e:
+                    logging.error(f"Error creating silent video: {e}")
+                    st.error("Failed to create the silent video. Please check the logs.")
+        else:
+            st.error("No valid video clips were created. Please check your input and try again.")
