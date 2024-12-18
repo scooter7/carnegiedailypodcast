@@ -126,7 +126,32 @@ def add_text_overlay(image_url, text, font_path):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
-# Create video with logo at the start and static image at the end
+import requests
+import tempfile
+
+def add_static_end_image(end_image_url, duration=5):
+    try:
+        # Download the image locally
+        response = requests.get(end_image_url, stream=True, timeout=10)
+        response.raise_for_status()
+        temp_image = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+        temp_image.write(response.content)
+        temp_image.close()
+
+        # Generate the video with the static image
+        temp_video_path = tempfile.mktemp(suffix=".mp4")
+        subprocess.run([
+            "ffmpeg", "-y", "-loop", "1", "-i", temp_image.name,
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Ensure even dimensions
+            "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p",
+            temp_video_path
+        ], check=True)
+        
+        return temp_video_path
+    except Exception as e:
+        logging.error(f"Error adding static end image: {e}")
+        return None
+
 # Create video with logo at the start and static image at the end
 def create_video_with_audio(logo_url, images, script, audio_path, add_text_overlay_flag):
     try:
@@ -135,8 +160,8 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
         # Add the logo as the first image
         temp_logo_video = tempfile.mktemp(suffix=".mp4")
         subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", logo_url, 
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
+            "ffmpeg", "-y", "-loop", "1", "-i", logo_url,
+            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
             "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_logo_video
         ], check=True)
         temp_videos.append(temp_logo_video)
@@ -148,20 +173,16 @@ def create_video_with_audio(logo_url, images, script, audio_path, add_text_overl
             temp_video = tempfile.mktemp(suffix=".mp4")
             subprocess.run([
                 "ffmpeg", "-y", "-loop", "1", "-i", img_path,
-                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
+                "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_video
             ], check=True)
             temp_videos.append(temp_video)
 
         # Add the final static image
         end_image_url = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
-        temp_end_video = tempfile.mktemp(suffix=".mp4")
-        subprocess.run([
-            "ffmpeg", "-y", "-loop", "1", "-i", end_image_url,
-            "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # Fix dimensions to be even
-            "-c:v", "libx264", "-t", "5", "-pix_fmt", "yuv420p", temp_end_video
-        ], check=True)
-        temp_videos.append(temp_end_video)
+        temp_end_video = add_static_end_image(end_image_url)
+        if temp_end_video:
+            temp_videos.append(temp_end_video)
 
         # Concatenate all videos and add audio
         concat_file = tempfile.mktemp(suffix=".txt")
