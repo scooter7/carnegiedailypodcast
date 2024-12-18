@@ -128,12 +128,38 @@ def add_text_overlay(image_path, text):
         logging.error(f"Failed to add text overlay: {e}")
         return None
 
+# Resize image to ensure dimensions are divisible by 2
+def ensure_even_dimensions(image_path):
+    try:
+        img = Image.open(image_path)
+        width, height = img.size
+
+        # Adjust dimensions to be divisible by 2
+        new_width = width if width % 2 == 0 else width - 1
+        new_height = height if height % 2 == 0 else height - 1
+
+        if (new_width, new_height) != (width, height):
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            temp_img_path = tempfile.mktemp(suffix=".png")
+            img.save(temp_img_path)
+            return temp_img_path
+        return image_path
+    except Exception as e:
+        logging.error(f"Error adjusting image dimensions: {e}")
+        return None
+
 # Generate video clip with filters and transitions
 def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
     try:
         img_path = download_image(image_url)
+        if not img_path:
+            raise ValueError("Failed to download image.")
+
         if text:
             img_path = add_text_overlay(img_path, text)
+
+        # Ensure dimensions are divisible by 2
+        img_path = ensure_even_dimensions(img_path)
 
         filters = {
             "None": "",
