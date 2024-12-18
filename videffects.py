@@ -4,7 +4,7 @@ import requests
 from urllib.parse import urljoin
 import openai
 import tempfile
-import subprocess
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
 from io import BytesIO
 import logging
@@ -91,22 +91,36 @@ def process_image(image_path, effect):
     else:
         return image
 
-# Re-encode video for compatibility
-def reencode_video(input_path, output_path):
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            input_path,
-            "-c:v",
-            "libx264",
-            "-pix_fmt",
-            "yuv420p",
-            output_path,
-        ],
-        check=True,
-    )
+# Function to create a video clip from an image
+def create_video_clip_with_effect(image_path, effect, duration=5):
+    try:
+        image = cv2.imread(image_path)
+        processed_image = process_image(image_path, effect)
+        output_path = tempfile.mktemp(suffix=".jpg")
+        cv2.imwrite(output_path, processed_image)
+        clip = ImageClip(output_path).set_duration(duration)
+        return clip
+    except Exception as e:
+        logging.error(f"Error creating video clip with effect: {e}")
+        return None
+
+# Function to generate the final video
+def create_final_video_with_moviepy(video_clips, script_audio_path, output_path):
+    try:
+        # Combine video clips
+        combined_clip = concatenate_videoclips(video_clips, method="compose")
+
+        # Add audio if provided
+        if script_audio_path:
+            audio = AudioFileClip(script_audio_path)
+            combined_clip = combined_clip.set_audio(audio)
+
+        # Write the final video
+        combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        return output_path
+    except Exception as e:
+        logging.error(f"Error generating final video: {e}")
+        return None
 
 # Streamlit UI
 st.title("Custom Video and Script Generator")
@@ -161,46 +175,21 @@ if urls:
                     st.image(image, caption=f"Processing {img_url}")
                     temp_image_path = tempfile.mktemp(suffix=".jpg")
                     image.save(temp_image_path)
-                    processed_image = process_image(temp_image_path, effect_option)
-
-                    temp_video_path = tempfile.mktemp(suffix=".mp4")
-                    cv2.imwrite(temp_image_path, processed_image)
-                    reencoded_video_path = tempfile.mktemp(suffix=".mp4")
-                    reencode_video(temp_video_path, reencoded_video_path)
-                    video_clips.append(reencoded_video_path)
+                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+                    if video_clip:
+                        video_clips.append(video_clip)
 
         if video_clips:
             st.write("Combining video clips into final video...")
             final_video_path = tempfile.mktemp(suffix=".mp4")
 
-            # Combine video clips
-            concat_file = tempfile.mktemp(suffix=".txt")
-            with open(concat_file, "w") as f:
-                for clip in video_clips:
-                    f.write(f"file '{clip}'\n")
-
             try:
-                subprocess.run(
-                    [
-                        "ffmpeg",
-                        "-y",
-                        "-f",
-                        "concat",
-                        "-safe",
-                        "0",
-                        "-i",
-                        concat_file,
-                        "-c:v",
-                        "libx264",
-                        "-pix_fmt",
-                        "yuv420p",
-                        final_video_path,
-                    ],
-                    check=True,
-                )
-                st.video(final_video_path)
-                st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                st.download_button("Download Script", final_script, "script.txt")
-            except subprocess.CalledProcessError as e:
-                logging.error(f"Error combining video clips: {e}")
+                # Create final video with MoviePy
+                final_video_path = create_final_video_with_moviepy(video_clips, None, final_video_path)
+                if final_video_path:
+                    st.video(final_video_path)
+                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                    st.download_button("Download Script", final_script, "script.txt")
+            except Exception as e:
+                logging.error(f"Error creating final video: {e}")
                 st.error("Failed to create the final video. Please check the logs.")
