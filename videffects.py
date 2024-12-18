@@ -3,9 +3,8 @@ from bs4 import BeautifulSoup
 import requests
 from urllib.parse import urljoin
 import openai
-import tempfile
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-from moviepy.video.fx.all import fadein, fadeout, crossfadein
+tempfile
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, fadein, fadeout
 from PIL import Image
 from io import BytesIO
 import logging
@@ -123,10 +122,8 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         if transition_type == "Fade":
             video_clips = [fadein(clip, 1).fadeout(1) for clip in video_clips]
         elif transition_type == "Dissolve":
-            video_clips = [
-                video_clips[i].crossfadein(1) if i > 0 else video_clips[i]
-                for i in range(len(video_clips))
-            ]
+            for i in range(1, len(video_clips)):
+                video_clips[i] = video_clips[i].crossfadein(1)
 
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
