@@ -150,23 +150,24 @@ def ensure_even_dimensions(image_path):
 # Generate video clip
 def generate_video_clip(image_url, duration, text=None, filter_option="None", transition="None"):
     try:
+        # Ensure minimum duration
+        duration = max(1, round(duration, 2))  # Minimum duration of 1 second
+
         # Download the image
         img_path = download_image(image_url)
         if not img_path:
             raise ValueError("Failed to download image.")
 
-        # Add text overlay if requested
+        # Add text overlay if required
         if text:
             img_path = add_text_overlay(img_path, text)
 
-        # Open the image
+        # Validate image format and aspect ratio preservation
         img = Image.open(img_path)
-
-        # Ensure even dimensions and preserve aspect ratio
         original_width, original_height = img.size
         target_size = max(original_width, original_height)
 
-        # Create a new black (RGB) canvas and paste the image in the center
+        # Create a square padded image with black borders
         padded_img = Image.new("RGB", (target_size, target_size), (0, 0, 0))
         x_offset = (target_size - original_width) // 2
         y_offset = (target_size - original_height) // 2
@@ -189,24 +190,20 @@ def generate_video_clip(image_url, duration, text=None, filter_option="None", tr
             "Zoom": "zoompan=z='zoom+0.01':d=25"
         }
 
-        # Create video filter chain
         vf_chain = ",".join(filter(None, [filters.get(filter_option, ""), transitions.get(transition, "")]))
 
-        # Round duration to 2 decimal places
-        duration = round(duration, 2)
-
-        # Set up FFmpeg command
+        # Create the video clip using FFmpeg
         temp_video = tempfile.mktemp(suffix=".mp4")
         ffmpeg_command = [
             "ffmpeg", "-y", "-loop", "1", "-i", img_path, "-t", str(duration),
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
+            "-vf", vf_chain if vf_chain else "null", "-c:v", "libx264", "-pix_fmt", "yuv420p", temp_video
         ]
-        if vf_chain:
-            ffmpeg_command.insert(-2, "-vf")
-            ffmpeg_command.insert(-2, vf_chain)
 
-        # Run FFmpeg command
+        # Run FFmpeg and validate output
         subprocess.run(ffmpeg_command, check=True)
+        if not os.path.exists(temp_video) or os.path.getsize(temp_video) == 0:
+            raise ValueError("FFmpeg failed to generate a valid video clip.")
+        
         return temp_video
     except Exception as e:
         logging.error(f"Error generating video clip: {e}")
