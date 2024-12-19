@@ -10,8 +10,8 @@ from io import BytesIO
 import logging
 import cv2
 import numpy as np
+import open3d as o3d  # New addition for 3D effects
 import os
-import subprocess
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -68,76 +68,53 @@ def generate_audio_with_openai(script, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Effects functions
-def apply_cartoon_effect(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-    edges = cv2.adaptiveThreshold(
-        gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9
-    )
-    color = cv2.bilateralFilter(image, 9, 300, 300)
-    cartoon = cv2.bitwise_and(color, color, mask=edges)
-    return cartoon
-
-def apply_anime_effect(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    edges = cv2.Canny(gray, 100, 200)
-    blurred = cv2.GaussianBlur(image, (15, 15), 0)
-    anime = cv2.bitwise_and(blurred, blurred, mask=edges)
-    return anime
-
-def apply_sketch_effect(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    inverted = cv2.bitwise_not(gray)
-    blurred = cv2.GaussianBlur(inverted, (21, 21), 0)
-    sketch = cv2.divide(gray, 255 - blurred, scale=256)
-    return cv2.cvtColor(sketch, cv2.COLOR_GRAY2BGR)
-
-def process_image(image_path, effect):
-    image = cv2.imread(image_path)
-    if effect == "Cartoon":
-        return apply_cartoon_effect(image)
-    elif effect == "Anime":
-        return apply_anime_effect(image)
-    elif effect == "Sketch":
-        return apply_sketch_effect(image)
-    else:
-        return image
-
-# Function to transform an image into 3D using Blender
+# New: Function to create a 3D-like transformation using Open3D
 def transform_image_to_3d(image_path):
     try:
-        # Temporary output for the 3D-transformed image
+        # Load image
+        image = cv2.imread(image_path)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+        # Create height map
+        height, width = gray.shape
+        x, y = np.meshgrid(np.arange(width), np.arange(height))
+        z = gray / 255.0  # Normalize grayscale to create height
+
+        # Create Open3D point cloud
+        points = np.vstack((x.flatten(), y.flatten(), z.flatten())).T
+        pcd = o3d.geometry.PointCloud()
+        pcd.points = o3d.utility.Vector3dVector(points)
+
+        # Visualize and save as image
+        vis = o3d.visualization.Visualizer()
+        vis.create_window(visible=False)
+        vis.add_geometry(pcd)
         output_path = tempfile.mktemp(suffix=".png")
-
-        # Path to Blender executable and the 3D script
-        blender_executable = "/path/to/blender"  # Replace with the actual path to Blender
-        blender_script = "/path/to/blender_image_3d.py"  # Replace with the actual Blender script path
-
-        # Run Blender in background mode with the Python script
-        subprocess.run([
-            blender_executable,
-            "--background",  # Run without UI
-            "--python", blender_script,
-            "--", image_path, output_path
-        ], check=True)
+        vis.capture_screen_image(output_path)
+        vis.destroy_window()
 
         return output_path
     except Exception as e:
-        logging.error(f"Error transforming image to 3D: {e}")
+        logging.error(f"Error generating 3D transformation: {e}")
         return None
 
-# Function to create a video clip from an image
-def create_video_clip_with_effect(image_path, effect, use_3d=False, duration=5, fps=24):
-    try:
-        if use_3d:
-            # Transform the image to 3D using Blender
-            image_path = transform_image_to_3d(image_path)
+# Function to process images with effects, including 3D transformation
+def process_image(image_path, effect):
+    if effect == "Cartoon":
+        return apply_cartoon_effect(image_path)
+    elif effect == "Anime":
+        return apply_anime_effect(image_path)
+    elif effect == "Sketch":
+        return apply_sketch_effect(image_path)
+    elif effect == "3D":
+        return transform_image_to_3d(image_path)
+    else:
+        return image_path
 
-        # Apply additional effects (e.g., Cartoon, Anime)
+# Function to create video clips from processed images
+def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
+    try:
         processed_image_path = process_image(image_path, effect)
-        
-        # Create a video clip from the processed image
         clip = ImageClip(processed_image_path).set_duration(duration).set_fps(fps)
         return clip
     except Exception as e:
@@ -147,13 +124,6 @@ def create_video_clip_with_effect(image_path, effect, use_3d=False, duration=5, 
 # Function to generate the final video with transitions
 def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
-        # Apply transitions between clips
-        if transition_type == "Fade":
-            video_clips = [
-                clip.crossfadein(1) if i > 0 else clip
-                for i, clip in enumerate(video_clips)
-            ]
-
         # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
 
@@ -161,10 +131,6 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
-
-            # Extend video duration to match audio length
-            audio_duration = audio.duration
-            combined_clip = combined_clip.loop(duration=audio_duration)
 
         # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -174,96 +140,34 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         return None
 
 # Streamlit UI
-st.title("Custom Video and Script Generator")
+st.title("Custom Video and Script Generator with 3D Effects")
 
-# Add a URL input field
-def url_input_fields():
-    urls = []
-    with st.container():
-        st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
-        for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
-            urls.append(url)
-    return urls
+# URL and image input
+urls = st.text_input("Enter webpage URLs (comma-separated):")
+effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch", "3D"])
+transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
 
-# Add image URL input fields per URL
-def image_input_fields(urls):
-    url_image_map = {}
-    for i, url in enumerate(urls):
-        st.subheader(f"Images for {url}")
-        num_images = st.number_input(
-            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
-        )
-        images = []
-        for j in range(num_images):
-            image_url = st.text_input(
-                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
-            )
-            images.append(image_url)
-        url_image_map[url] = images
-    return url_image_map
+if st.button("Generate Video"):
+    video_clips = []
+    url_list = [url.strip() for url in urls.split(",") if url.strip()]
 
-# Main logic
-urls = url_input_fields()
-video_clips = []  # Initialize video_clips
+    for url in url_list:
+        st.write(f"Processing URL: {url}")
+        text = scrape_text_from_url(url)
+        summary = generate_summary(text, max_words=150)
 
-if urls:
-    url_image_map = image_input_fields(urls)
-    effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    use_3d = st.checkbox("Apply 3D Transformation to Images", value=False)
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade"])
+        images = st.file_uploader(f"Upload images for {url}", accept_multiple_files=True, type=["jpg", "png"])
 
-    if st.button("Generate Video"):
-        final_script = ""
+        for image_file in images:
+            temp_image_path = tempfile.mktemp(suffix=".jpg")
+            with open(temp_image_path, "wb") as f:
+                f.write(image_file.read())
+            clip = create_video_clip_with_effect(temp_image_path, effect_option)
+            if clip:
+                video_clips.append(clip)
 
-        for url, images in url_image_map.items():
-            st.write(f"Processing URL: {url}")
-            text = scrape_text_from_url(url)
-            summary = generate_summary(text, max_words=150)
-            final_script += f"\n{summary}"
-
-            for img_url in images:
-                image = download_image_from_url(img_url)
-                if image:
-                    st.image(image, caption=f"Processing {img_url}")
-                    temp_image_path = tempfile.mktemp(suffix=".jpg")
-                    image.save(temp_image_path)
-                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option, use_3d=use_3d)
-                    if video_clip:
-                        video_clips.append(video_clip)
-
-        # Process video clips if they exist
-        if video_clips:
-            st.write("Generating audio from script...")
-            audio_path = generate_audio_with_openai(final_script, voice="alloy")
-
-            if audio_path:
-                st.write("Combining video clips into final video...")
-                final_video_path = tempfile.mktemp(suffix=".mp4")
-
-                try:
-                    # Create final video with transitions
-                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=transition_option)
-                    if final_video_path:
-                        st.video(final_video_path)
-                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                        st.download_button("Download Script", final_script, "script.txt")
-                except Exception as e:
-                    logging.error(f"Error creating final video: {e}")
-                    st.error("Failed to create the final video. Please check the logs.")
-            else:
-                st.write("No audio generated. Creating a silent video...")
-                final_video_path = tempfile.mktemp(suffix=".mp4")
-
-                try:
-                    final_video_path = create_final_video_with_transitions(video_clips, None, final_video_path, transition_type=transition_option)
-                    if final_video_path:
-                        st.video(final_video_path)
-                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                        st.download_button("Download Script", final_script, "script.txt")
-                except Exception as e:
-                    logging.error(f"Error creating silent video: {e}")
-                    st.error("Failed to create the silent video. Please check the logs.")
-        else:
-            st.error("No valid video clips were created. Please check your input and try again.")
+    if video_clips:
+        audio_path = generate_audio_with_openai(summary)
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+        create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=transition_option)
+        st.video(final_video_path)
