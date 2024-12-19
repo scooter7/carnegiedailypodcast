@@ -67,62 +67,52 @@ def generate_audio_with_openai(script, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Function to apply a 3D transformation to an image using OpenCV
-def apply_3d_transformation(image_path):
-    try:
-        image = cv2.imread(image_path)
-        rows, cols, _ = image.shape
-
-        # Define 3D transformation matrix
-        src_points = np.float32([[0, 0], [cols - 1, 0], [0, rows - 1]])
-        dst_points = np.float32([[0, 0], [int(0.8 * cols), int(0.2 * rows)], [int(0.2 * cols), int(0.9 * rows)]])
-        matrix = cv2.getAffineTransform(src_points, dst_points)
-
-        transformed = cv2.warpAffine(image, matrix, (cols, rows))
-        return transformed
-    except Exception as e:
-        logging.error(f"Error applying 3D transformation: {e}")
+# Function to create a 3D-like perspective transformation of an image
+def apply_3d_transform(image_path):
+    image = cv2.imread(image_path)
+    if image is None:
+        logging.error(f"Failed to read image from {image_path}")
         return None
 
-# Process the image with an optional 3D transformation
-def process_image_with_3d(image_path, apply_3d=False):
-    try:
-        if apply_3d:
-            transformed_image = apply_3d_transformation(image_path)
-            if transformed_image is not None:
-                output_path = tempfile.mktemp(suffix=".jpg")
-                cv2.imwrite(output_path, transformed_image)
-                return output_path
-        return image_path
-    except Exception as e:
-        logging.error(f"Error processing image with 3D transformation: {e}")
-        return None
+    height, width = image.shape[:2]
+    src_points = np.float32([[0, 0], [width - 1, 0], [0, height - 1], [width - 1, height - 1]])
+    dst_points = np.float32([
+        [width * 0.1, height * 0.1],
+        [width * 0.9, height * 0.2],
+        [width * 0.2, height * 0.9],
+        [width * 0.8, height * 0.8],
+    ])
+
+    matrix = cv2.getPerspectiveTransform(src_points, dst_points)
+    transformed_image = cv2.warpPerspective(image, matrix, (width, height))
+
+    output_path = tempfile.mktemp(suffix=".jpg")
+    cv2.imwrite(output_path, transformed_image)
+    return output_path
 
 # Function to create a video clip from an image
-def create_video_clip_with_effect(image_path, effect, duration=5, fps=24, apply_3d=False):
+def create_video_clip_with_effect(image_path, duration=5, fps=24):
     try:
-        processed_image_path = process_image_with_3d(image_path, apply_3d)
-        image = cv2.imread(processed_image_path)
-        output_path = tempfile.mktemp(suffix=".jpg")
-        cv2.imwrite(output_path, image)
-        clip = ImageClip(output_path).set_duration(duration).set_fps(fps)
+        transformed_image_path = apply_3d_transform(image_path)
+        if not transformed_image_path:
+            logging.error("3D transformation failed.")
+            return None
+
+        clip = ImageClip(transformed_image_path).set_duration(duration).set_fps(fps)
         return clip
     except Exception as e:
-        logging.error(f"Error creating video clip with effect: {e}")
+        logging.error(f"Error creating video clip with 3D effect: {e}")
         return None
 
 # Function to generate the final video with transitions
-def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
+def create_final_video_with_transitions(video_clips, script_audio_path, output_path, fps=24):
     try:
-        # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
 
-        # Add audio if provided
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
 
-        # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
@@ -130,7 +120,7 @@ def create_final_video_with_transitions(video_clips, script_audio_path, output_p
         return None
 
 # Streamlit UI
-st.title("Custom Video and Script Generator with 3D Effects")
+st.title("Custom Video and Script Generator with 3D Effect")
 
 # Add a URL input field
 def url_input_fields():
@@ -162,23 +152,48 @@ def image_input_fields(urls):
 
 # Main logic
 urls = url_input_fields()
-video_clips = []  # Initialize video_clips
+video_clips = []
 
 if urls:
     url_image_map = image_input_fields(urls)
-    apply_3d_option = st.checkbox("Apply 3D Transformation")
+
     if st.button("Generate Video"):
+        final_script = ""
+
         for url, images in url_image_map.items():
+            st.write(f"Processing URL: {url}")
+            text = scrape_text_from_url(url)
+            summary = generate_summary(text, max_words=150)
+            final_script += f"\n{summary}"
+
             for img_url in images:
                 image = download_image_from_url(img_url)
                 if image:
+                    st.image(image, caption=f"Processing {img_url}")
                     temp_image_path = tempfile.mktemp(suffix=".jpg")
                     image.save(temp_image_path)
-                    video_clip = create_video_clip_with_effect(temp_image_path, effect=None, apply_3d=apply_3d_option)
+                    video_clip = create_video_clip_with_effect(temp_image_path)
                     if video_clip:
                         video_clips.append(video_clip)
 
         if video_clips:
-            final_video_path = tempfile.mktemp(suffix=".mp4")
-            create_final_video_with_transitions(video_clips, None, final_video_path)
-            st.video(final_video_path)
+            st.write("Generating audio from script...")
+            audio_path = generate_audio_with_openai(final_script, voice="alloy")
+
+            if audio_path:
+                st.write("Combining video clips into final video...")
+                final_video_path = tempfile.mktemp(suffix=".mp4")
+
+                try:
+                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path)
+                    if final_video_path:
+                        st.video(final_video_path)
+                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                        st.download_button("Download Script", final_script, "script.txt")
+                except Exception as e:
+                    logging.error(f"Error creating final video: {e}")
+                    st.error("Failed to create the final video. Please check the logs.")
+            else:
+                st.error("Failed to generate audio. Please check the script and try again.")
+        else:
+            st.error("No valid video clips were created. Please check your input and try again.")
