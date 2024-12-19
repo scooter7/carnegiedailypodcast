@@ -20,4 +20,3 @@ cairosvg
 pyav
 tqdm
 opencv-python
-open3d
