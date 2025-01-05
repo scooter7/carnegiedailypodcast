@@ -116,30 +116,46 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         return None
 
 # Function to combine video clips with transitions and audio
-def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
+def create_final_video_with_repeating_images(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
 
+        # Calculate total video duration based on audio length
+        if script_audio_path:
+            audio = AudioFileClip(script_audio_path)
+            total_duration = audio.duration
+        else:
+            total_duration = sum(clip.duration for clip in video_clips)
+
+        # Repeat video clips to fill the total duration
+        repeated_clips = []
+        current_duration = 0
+        while current_duration < total_duration:
+            for clip in video_clips:
+                repeated_clips.append(clip)
+                current_duration += clip.duration
+                if current_duration >= total_duration:
+                    break
+
         # Apply transitions between clips
         if transition_type == "Fade":
             video_clips_with_transitions = []
-            for i in range(len(video_clips) - 1):
-                clip = video_clips[i]
-                next_clip = video_clips[i + 1]
+            for i in range(len(repeated_clips) - 1):
+                clip = repeated_clips[i]
+                next_clip = repeated_clips[i + 1]
                 video_clips_with_transitions.append(clip.crossfadeout(1))
                 video_clips_with_transitions.append(next_clip.crossfadein(1))
-            video_clips = video_clips_with_transitions
+            repeated_clips = video_clips_with_transitions
         elif transition_type == "Slide":
-            # Implement slide transitions if necessary
-            pass  # Placeholder for slide transition logic
+            # Placeholder for slide transition logic
+            pass
 
-        # Concatenate all video clips
-        combined_clip = concatenate_videoclips(video_clips, method="compose")
+        # Concatenate all repeated clips
+        combined_clip = concatenate_videoclips(repeated_clips, method="compose")
 
         # Add audio if available
         if script_audio_path:
-            audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video file
@@ -190,41 +206,41 @@ if urls:
     transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
 
     if st.button("Generate Video"):
-        combined_text = ""
-        for url in urls:
-            text = scrape_text_from_url(url)
-            if text:
-                combined_text += f"\n{text}"
+    combined_text = ""
+    for url in urls:
+        text = scrape_text_from_url(url)
+        if text:
+            combined_text += f"\n{text}"
 
-        if combined_text:
-            final_script = generate_combined_summary_with_narration(combined_text, school_name="these amazing schools")
-            audio_path = generate_audio_with_openai(final_script, voice="alloy")
+    if combined_text:
+        final_script = generate_combined_summary_with_narration(combined_text, school_name="these amazing schools")
+        audio_path = generate_audio_with_openai(final_script, voice="alloy")
 
-            for url, images in url_image_map.items():
-                for img_url in images:
-                    image = download_image_from_url(img_url)
-                    if image:
-                        st.image(image, caption=f"Processing {img_url}")
-                        temp_image_path = tempfile.mktemp(suffix=".jpg")
-                        image.save(temp_image_path)
-                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
-                        if video_clip:
-                            video_clips.append(video_clip)
+        for url, images in url_image_map.items():
+            for img_url in images:
+                image = download_image_from_url(img_url)
+                if image:
+                    st.image(image, caption=f"Processing {img_url}")
+                    temp_image_path = tempfile.mktemp(suffix=".jpg")
+                    image.save(temp_image_path)
+                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+                    if video_clip:
+                        video_clips.append(video_clip)
 
-            if video_clips and audio_path:
-                final_video_path = tempfile.mktemp(suffix=".mp4")
-                try:
-                    final_video_path = create_final_video_with_transitions(
-                        video_clips, audio_path, final_video_path, transition_type=transition_option
-                    )
-                    if final_video_path:
-                        st.video(final_video_path)
-                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                        st.download_button("Download Script", final_script, "script.txt")
-                except Exception as e:
-                    logging.error(f"Error creating final video: {e}")
-                    st.error("Failed to create the final video.")
-            else:
-                st.error("No valid audio or video clips were created.")
+        if video_clips and audio_path:
+            final_video_path = tempfile.mktemp(suffix=".mp4")
+            try:
+                final_video_path = create_final_video_with_repeating_images(
+                    video_clips, audio_path, final_video_path, transition_type=transition_option
+                )
+                if final_video_path:
+                    st.video(final_video_path)
+                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                    st.download_button("Download Script", final_script, "script.txt")
+            except Exception as e:
+                logging.error(f"Error creating final video: {e}")
+                st.error("Failed to create the final video.")
         else:
-            st.error("No valid text content found.")
+            st.error("No valid audio or video clips were created.")
+    else:
+        st.error("No valid text content found.")
