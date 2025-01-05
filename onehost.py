@@ -68,11 +68,22 @@ def scrape_images_and_text(url):
 
 # Generate script using OpenAI
 def generate_script(text, max_words):
+    opening_message = (
+        "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
+        "Today we’re highlighting [school or list of schools]. Let’s get started!"
+    )
+    closing_message = (
+        "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
+        "Just click the green “Yes, connect me!” buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
+        "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
+        "Until next time, happy college hunting!"
+    )
     system_prompt = """
-    You are a podcast host for 'CX Overview.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
-    Include location, campus type, accolades, and testimonials. End with 'more information can be found at collegexpress.com.' Don't be afraid to show emotion and enthusiasm!
+    You are a podcast host for 'CollegeXpress Campus Countdown.' Generate a robust, fact-based summary of the school at the scraped webpage narrated by Lisa. 
+    Include location, campus type, accolades, and testimonials. Don't be afraid to show emotion and enthusiasm!
     """
     try:
+        # Generate dynamic part of the script
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
@@ -80,10 +91,14 @@ def generate_script(text, max_words):
                 {"role": "user", "content": f"Summarize this text: {text} Limit: {max_words} words."}
             ]
         )
-        return response.choices[0].message.content.strip()
+        dynamic_content = response.choices[0].message.content.strip()
+        
+        # Combine all parts of the script
+        full_script = f"{opening_message}\n\n{dynamic_content}\n\n{closing_message}"
+        return full_script
     except Exception as e:
         logging.error(f"Error generating script: {e}")
-        return ""
+        return f"{opening_message}\n\n[Error generating dynamic content]\n\n{closing_message}"
 
 # Generate speech using OpenAI TTS
 def generate_audio_with_openai(text, voice="alloy"):
