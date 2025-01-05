@@ -229,19 +229,18 @@ if st.button("Generate Video"):
                     if video_clip:
                         video_clips.append(video_clip)
 
-    if video_clips and audio_path:
-        final_video_path = tempfile.mktemp(suffix=".mp4")
-        try:
-            final_video_path = create_final_video_with_audio_sync(
-                video_clips, audio_path, final_video_path, transition_type=transition_option
-            )
-        if final_video_path:
-            st.video(final_video_path)
-            st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-            st.download_button("Download Script", final_script, "script.txt")
-        except Exception as e:
-            logging.error(f"Error creating final video: {e}")
-            st.error("Failed to create the final video.")
-    else:
-        st.error("No valid audio or video clips were created.")
-
+        if video_clips and audio_path:
+            final_video_path = tempfile.mktemp(suffix=".mp4")
+            try:
+                final_video_path = create_final_video_with_audio_sync(
+                    video_clips, audio_path, final_video_path, transition_type=transition_option
+                )
+                if final_video_path:
+                    st.video(final_video_path)
+                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                    st.download_button("Download Script", final_script, "script.txt")
+            except Exception as e:
+                logging.error(f"Error creating final video: {e}")
+                st.error("Failed to create the final video.")
+        else:
+            st.error("No valid audio or video clips were created.")
