@@ -118,15 +118,31 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
 # Function to combine video clips with transitions and audio
 def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
+        if not video_clips:
+            raise ValueError("No video clips provided for final video creation.")
+
+        # Apply transitions between clips
         if transition_type == "Fade":
-            video_clips = [
-                clip.crossfadein(1) if i > 0 else clip
-                for i, clip in enumerate(video_clips)
-            ]
+            video_clips_with_transitions = []
+            for i in range(len(video_clips) - 1):
+                clip = video_clips[i]
+                next_clip = video_clips[i + 1]
+                video_clips_with_transitions.append(clip.crossfadeout(1))
+                video_clips_with_transitions.append(next_clip.crossfadein(1))
+            video_clips = video_clips_with_transitions
+        elif transition_type == "Slide":
+            # Implement slide transitions if necessary
+            pass  # Placeholder for slide transition logic
+
+        # Concatenate all video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
+
+        # Add audio if available
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
+
+        # Write the final video file
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
