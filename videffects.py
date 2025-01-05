@@ -116,27 +116,30 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         return None
 
 # Function to combine video clips with transitions and audio
-def create_final_video_with_repeating_images(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
+def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
 
-        # Calculate total video duration based on audio length
+        # Load audio to determine total duration
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             total_duration = audio.duration
         else:
-            total_duration = sum(clip.duration for clip in video_clips)
+            raise ValueError("Audio file is required to set the video duration.")
 
-        # Repeat video clips to fill the total duration
+        # Repeat and trim video clips to match audio duration
         repeated_clips = []
         current_duration = 0
-        while current_duration < total_duration:
-            for clip in video_clips:
+        for clip in video_clips:
+            if current_duration + clip.duration > total_duration:
+                clip = clip.subclip(0, total_duration - current_duration)
                 repeated_clips.append(clip)
-                current_duration += clip.duration
-                if current_duration >= total_duration:
-                    break
+                break
+            repeated_clips.append(clip)
+            current_duration += clip.duration
+            if current_duration >= total_duration:
+                break
 
         # Apply transitions between clips
         if transition_type == "Fade":
@@ -151,12 +154,11 @@ def create_final_video_with_repeating_images(video_clips, script_audio_path, out
             # Placeholder for slide transition logic
             pass
 
-        # Concatenate all repeated clips
+        # Concatenate all clips
         combined_clip = concatenate_videoclips(repeated_clips, method="compose")
 
-        # Add audio if available
-        if script_audio_path:
-            combined_clip = combined_clip.set_audio(audio)
+        # Add audio to the video
+        combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video file
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -227,20 +229,19 @@ if st.button("Generate Video"):
                     if video_clip:
                         video_clips.append(video_clip)
 
-        if video_clips and audio_path:
-            final_video_path = tempfile.mktemp(suffix=".mp4")
-            try:
-                final_video_path = create_final_video_with_repeating_images(
-                    video_clips, audio_path, final_video_path, transition_type=transition_option
-                )
-                if final_video_path:
-                    st.video(final_video_path)
-                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                    st.download_button("Download Script", final_script, "script.txt")
-            except Exception as e:
-                logging.error(f"Error creating final video: {e}")
-                st.error("Failed to create the final video.")
-        else:
-            st.error("No valid audio or video clips were created.")
+    if video_clips and audio_path:
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+        try:
+            final_video_path = create_final_video_with_audio_sync(
+                video_clips, audio_path, final_video_path, transition_type=transition_option
+            )
+        if final_video_path:
+            st.video(final_video_path)
+            st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+            st.download_button("Download Script", final_script, "script.txt")
+        except Exception as e:
+            logging.error(f"Error creating final video: {e}")
+            st.error("Failed to create the final video.")
     else:
-        st.error("No valid text content found.")
+        st.error("No valid audio or video clips were created.")
+
