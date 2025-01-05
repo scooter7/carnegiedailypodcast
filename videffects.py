@@ -205,7 +205,7 @@ if urls:
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
     transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
 
-    if st.button("Generate Video"):
+if st.button("Generate Video"):
     combined_text = ""
     for url in urls:
         text = scrape_text_from_url(url)
