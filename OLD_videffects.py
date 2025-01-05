@@ -12,10 +12,8 @@ import cv2
 import numpy as np
 import os
 
-# Initialize logging
 logging.basicConfig(level=logging.INFO)
 
-# Function to scrape text content from a URL
 def scrape_text_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -26,7 +24,6 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to download an image from a URL
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -37,10 +34,20 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Function to generate a summary using OpenAI
-def generate_summary(text, max_words):
+def generate_summary_with_narration(text, max_words, school_name="the highlighted schools"):
+    opening_message = (
+        f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
+        f"Today we’re highlighting {school_name}. Let’s get started!"
+    )
+    closing_message = (
+        "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
+        "Just click the green “Yes, connect me!” buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
+        "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
+        "Until next time, happy college hunting!"
+    )
     system_prompt = (
-        "You are a podcast host. Summarize the text narratively. Include key details and end with an engaging note."
+        "You are a podcast host. Summarize the text narratively. Include key details like location, accolades, and testimonials. "
+        "End with an engaging note that highlights the school's strengths."
     )
     try:
         response = openai.chat.completions.create(
@@ -50,12 +57,13 @@ def generate_summary(text, max_words):
                 {"role": "user", "content": f"Summarize this text: {text} Limit: {max_words} words."},
             ],
         )
-        return response.choices[0].message.content.strip()
+        dynamic_summary = response.choices[0].message.content.strip()
+        full_script = f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}"
+        return full_script
     except Exception as e:
         logging.error(f"Error generating summary: {e}")
-        return ""
+        return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
-# Generate speech using OpenAI TTS
 def generate_audio_with_openai(script, voice="alloy"):
     try:
         response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
@@ -67,7 +75,6 @@ def generate_audio_with_openai(script, voice="alloy"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Effects functions
 def apply_cartoon_effect(image):
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     gray = cv2.medianBlur(gray, 5)
@@ -103,7 +110,6 @@ def process_image(image_path, effect):
     else:
         return image
 
-# Function to create a video clip from an image
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
         image = cv2.imread(image_path)
@@ -116,42 +122,27 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         logging.error(f"Error creating video clip with effect: {e}")
         return None
 
-# Function to generate the final video with transitions
 def create_final_video_with_transitions(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
-        # Apply transitions between clips
         if transition_type == "Fade":
             video_clips = [
                 clip.crossfadein(1) if i > 0 else clip
                 for i, clip in enumerate(video_clips)
             ]
-        elif transition_type == "Slide":
-            # Implement a sliding transition effect here if required
-            pass
-
-        # Combine video clips
         combined_clip = concatenate_videoclips(video_clips, method="compose")
-
-        # Add audio if provided
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
             combined_clip = combined_clip.set_audio(audio)
-
-            # Extend video duration to match audio length
             audio_duration = audio.duration
             combined_clip = combined_clip.loop(duration=audio_duration)
-
-        # Write the final video
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
         return None
 
-# Streamlit UI
 st.title("Custom Video and Script Generator")
 
-# Add a URL input field
 def url_input_fields():
     urls = []
     with st.container():
@@ -162,7 +153,6 @@ def url_input_fields():
             urls.append(url)
     return urls
 
-# Add image URL input fields per URL
 def image_input_fields(urls):
     url_image_map = {}
     for i, url in enumerate(urls):
@@ -179,9 +169,8 @@ def image_input_fields(urls):
         url_image_map[url] = images
     return url_image_map
 
-# Main logic
 urls = url_input_fields()
-video_clips = []  # Initialize video_clips
+video_clips = []
 
 if urls:
     url_image_map = image_input_fields(urls)
@@ -194,8 +183,8 @@ if urls:
         for url, images in url_image_map.items():
             st.write(f"Processing URL: {url}")
             text = scrape_text_from_url(url)
-            summary = generate_summary(text, max_words=150)
-            final_script += f"\n{summary}"
+            script = generate_summary_with_narration(text, max_words=150, school_name="this amazing school")
+            final_script += f"\n{script}"
 
             for img_url in images:
                 image = download_image_from_url(img_url)
@@ -207,37 +196,34 @@ if urls:
                     if video_clip:
                         video_clips.append(video_clip)
 
-        # Process video clips if they exist
         if video_clips:
-            st.write("Generating audio from script...")
             audio_path = generate_audio_with_openai(final_script, voice="alloy")
-
             if audio_path:
-                st.write("Combining video clips into final video...")
                 final_video_path = tempfile.mktemp(suffix=".mp4")
-
                 try:
-                    # Create final video with transitions
-                    final_video_path = create_final_video_with_transitions(video_clips, audio_path, final_video_path, transition_type=transition_option)
+                    final_video_path = create_final_video_with_transitions(
+                        video_clips, audio_path, final_video_path, transition_type=transition_option
+                    )
                     if final_video_path:
                         st.video(final_video_path)
                         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
                         st.download_button("Download Script", final_script, "script.txt")
                 except Exception as e:
                     logging.error(f"Error creating final video: {e}")
-                    st.error("Failed to create the final video. Please check the logs.")
+                    st.error("Failed to create the final video.")
             else:
                 st.write("No audio generated. Creating a silent video...")
                 final_video_path = tempfile.mktemp(suffix=".mp4")
-
                 try:
-                    final_video_path = create_final_video_with_transitions(video_clips, None, final_video_path, transition_type=transition_option)
+                    final_video_path = create_final_video_with_transitions(
+                        video_clips, None, final_video_path, transition_type=transition_option
+                    )
                     if final_video_path:
                         st.video(final_video_path)
                         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
                         st.download_button("Download Script", final_script, "script.txt")
                 except Exception as e:
                     logging.error(f"Error creating silent video: {e}")
-                    st.error("Failed to create the silent video. Please check the logs.")
+                    st.error("Failed to create the silent video.")
         else:
             st.error("No valid video clips were created. Please check your input and try again.")
