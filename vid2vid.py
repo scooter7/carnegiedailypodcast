@@ -37,13 +37,13 @@ if uploaded_file is not None:
             # Direct HTTP call to Replicate API
             url = f"https://api.replicate.com/v1/predictions"
             headers = {"Authorization": f"Token {REPLICATE_API_TOKEN}"}
-            payload = {
+            data = {
                 "version": model_name,
-                "input": {
-                    "video": open(temp_input.name, "rb")  # Adjust based on model's input API
-                }
             }
-            response = requests.post(url, headers=headers, json=payload)
+            # Send video as a file
+            with open(temp_input.name, "rb") as video_file:
+                files = {"video": video_file}
+                response = requests.post(url, headers=headers, data=data, files=files)
 
             if response.status_code == 200:
                 output_url = response.json()["output"]
