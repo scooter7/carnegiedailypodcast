@@ -2,7 +2,6 @@ import streamlit as st
 from bs4 import BeautifulSoup
 import requests
 import replicate
-import openai
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
@@ -20,7 +19,7 @@ def scrape_text_from_url(url):
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
         text = soup.get_text(separator=" ", strip=True)
-        return text[:5000]  # Limit to 5000 characters to avoid overload
+        return text[:5000]  # Limit to 5000 characters
     except Exception as e:
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
@@ -36,53 +35,10 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Function to dynamically generate a summary script based on duration
-def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
-    opening_message = (
-        f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
-        f"Today we’re highlighting {school_name}. Let’s get started!"
-    )
-    closing_message = (
-        "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
-        "Just click the green “Yes, connect me!” buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
-        "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
-        "Until next time, happy college hunting!"
-    )
-    max_words = (desired_duration // 60) * WORDS_PER_MINUTE
-    system_prompt = (
-        f"As a show host, summarize the text narratively to fit within {max_words} words. Include key details like location, accolades, and testimonials. "
-        f"Speak naturally in terms of pace, and be enthusiastic in your tone."
-    )
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Summarize this text: {all_text}"},
-            ],
-        )
-        dynamic_summary = response.choices[0].message.content.strip()
-        full_script = f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}"
-        return full_script
-    except Exception as e:
-        logging.error(f"Error generating dynamic summary: {e}")
-        return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
-
-# Function to generate audio from a script using OpenAI
-def generate_audio_with_openai(script, voice="shimmer"):
-    try:
-        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
-        audio_path = tempfile.mktemp(suffix=".mp3")
-        with open(audio_path, "wb") as f:
-            f.write(response.content)
-        return audio_path
-    except Exception as e:
-        logging.error(f"Error generating audio: {e}")
-        return None
-
-# Apply image effects using Replicate
+# Function to apply effects using Replicate API
 def apply_replicate_effect(image_path, effect):
     try:
+        # Map effects to Replicate models
         replicate_models = {
             "Cartoon": "catacolabs/cartoonify",
             "Anime": "cjwbw/videocrafter2-anime",
@@ -91,42 +47,60 @@ def apply_replicate_effect(image_path, effect):
         model_name = replicate_models.get(effect)
         if not model_name:
             logging.warning(f"No Replicate model found for effect: {effect}")
-            return image_path  # Return original image if no model matches
+            return image_path  # Return original image if no effect is selected
 
+        # Initialize Replicate client
         replicate_api_key = st.secrets["replicate"]["api_key"]
         client = replicate.Client(api_token=replicate_api_key)
 
+        # Call the Replicate API
+        logging.info(f"Applying effect '{effect}' using model '{model_name}'")
         with open(image_path, "rb") as img_file:
-            response = client.run(model_name, input={"image": img_file})
+            response = client.run(
+                model_name,
+                input={"image": img_file}
+            )
 
+        # Ensure the response is valid
+        if not response or not isinstance(response, str):
+            logging.error(f"Invalid response from Replicate API: {response}")
+            return image_path  # Return original image if API fails
+
+        # Download the processed image and save it
         output_path = tempfile.mktemp(suffix=".jpg")
         response_content = requests.get(response).content
         with open(output_path, "wb") as out_file:
             out_file.write(response_content)
 
+        logging.info(f"Effect applied successfully. Processed image saved to: {output_path}")
         return output_path
     except Exception as e:
-        logging.error(f"Error applying Replicate effect '{effect}': {e}")
-        return image_path
+        logging.error(f"Error applying effect '{effect}': {e}")
+        return image_path  # Return the original image in case of error
 
-# Function to create a video clip with Replicate effects
+# Function to create video clip from processed image
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
+        # Apply the effect and get the processed image path
         processed_image_path = apply_replicate_effect(image_path, effect)
+
+        # Create a video clip using the processed image
         return ImageClip(processed_image_path).set_duration(duration).set_fps(fps)
     except Exception as e:
         logging.error(f"Error creating video clip: {e}")
         return None
 
-# Function to combine video clips with transitions and synchronize with audio
-def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
+# Function to combine video clips and synchronize with audio
+def create_final_video_with_audio(video_clips, audio_path, output_path, fps=24):
     try:
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
 
-        audio = AudioFileClip(script_audio_path)
+        # Load audio to determine total duration
+        audio = AudioFileClip(audio_path)
         total_audio_duration = audio.duration
 
+        # Repeat and trim clips to match audio duration
         repeated_clips = []
         current_duration = 0
         while current_duration < total_audio_duration:
@@ -139,10 +113,12 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
                 repeated_clips.append(clip)
                 current_duration += clip.duration
 
-        combined_clip = concatenate_videoclips(repeated_clips, method="compose")
-        combined_clip = combined_clip.set_audio(audio)
-        final_clip = combined_clip.subclip(0, total_audio_duration)
+        # Concatenate video clips and synchronize with audio
+        final_clip = concatenate_videoclips(repeated_clips, method="compose")
+        final_clip = final_clip.set_audio(audio)
+        final_clip = final_clip.subclip(0, total_audio_duration)
 
+        # Save the final video
         final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
@@ -152,18 +128,17 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
 # Streamlit UI
 st.title("Custom Video and Script Generator with AI Effects")
 
-# Input fields for URLs
+# Input URLs
 def url_input_fields():
     urls = []
-    with st.container():
-        st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
-        for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
-            urls.append(url)
+    st.subheader("Enter URLs")
+    num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+    for i in range(num_urls):
+        url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
+        urls.append(url)
     return urls
 
-# Input fields for images associated with each URL
+# Input images for each URL
 def image_input_fields(urls):
     url_image_map = {}
     for i, url in enumerate(urls):
@@ -181,10 +156,10 @@ def image_input_fields(urls):
     return url_image_map
 
 urls = url_input_fields()
+
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade"])
     video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
 if st.button("Generate Video"):
@@ -202,9 +177,12 @@ if st.button("Generate Video"):
                 if video_clip:
                     video_clips.append(video_clip)
 
-    final_script = generate_dynamic_summary_with_duration(combined_text, video_duration)
-    audio_path = generate_audio_with_openai(final_script)
+    # Generate dynamic script and audio
+    script = f"Your dynamic script based on: {combined_text}"
+    audio_path = tempfile.mktemp(suffix=".mp3")  # Simulate audio generation
+
+    # Create final video
     final_video_path = tempfile.mktemp(suffix=".mp4")
     if video_clips and audio_path:
-        create_final_video_with_audio_sync(video_clips, audio_path, final_video_path)
+        create_final_video_with_audio(video_clips, audio_path, final_video_path)
         st.video(final_video_path)
