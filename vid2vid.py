@@ -3,9 +3,11 @@ import replicate
 import tempfile
 import requests
 
-# Access API key from Streamlit secrets
+# Validate the API key from Streamlit secrets
 try:
     REPLICATE_API_TOKEN = st.secrets["replicate"]["api_key"]
+    if not REPLICATE_API_TOKEN:
+        raise ValueError("Replicate API Key is missing")
 except KeyError:
     st.error("Replicate API Key not found in secrets. Please configure it.")
     st.stop()
