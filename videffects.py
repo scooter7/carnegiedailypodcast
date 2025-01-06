@@ -119,7 +119,7 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         logging.error(f"Error processing image for video clip: {e}")
         return None
 
-# Function to combine video clips with transitions and audio
+# Function to combine video clips with transitions and synchronize with audio
 def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
         if not video_clips:
@@ -138,6 +138,7 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         while current_duration < total_audio_duration:
             for clip in video_clips:
                 if current_duration + clip.duration > total_audio_duration:
+                    # Trim the last clip to match the remaining duration
                     clip = clip.subclip(0, total_audio_duration - current_duration)
                     repeated_clips.append(clip)
                     current_duration = total_audio_duration
@@ -161,8 +162,11 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         # Add audio to the video
         combined_clip = combined_clip.set_audio(audio)
 
+        # Ensure the final video length matches the audio duration
+        final_clip = combined_clip.subclip(0, total_audio_duration)
+
         # Write the final video file
-        combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
+        final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
@@ -221,34 +225,33 @@ if st.button("Generate Video"):
         audio_path = generate_audio_with_openai(final_script, voice="shimmer")
 
         # Ensure the audio duration matches the user-defined video duration
-        audio_duration = 0
         if audio_path:
             audio = AudioFileClip(audio_path)
             audio_duration = audio.duration
 
-        for url, images in url_image_map.items():
-            for img_url in images:
-                image = download_image_from_url(img_url)
-                if image:
-                    st.image(image, caption=f"Processing {img_url}")
-                    temp_image_path = tempfile.mktemp(suffix=".jpg")
-                    image.save(temp_image_path)
-                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-                    if video_clip:
-                        video_clips.append(video_clip)
+            for url, images in url_image_map.items():
+                for img_url in images:
+                    image = download_image_from_url(img_url)
+                    if image:
+                        st.image(image, caption=f"Processing {img_url}")
+                        temp_image_path = tempfile.mktemp(suffix=".jpg")
+                        image.save(temp_image_path)
+                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+                        if video_clip:
+                            video_clips.append(video_clip)
 
-        if video_clips and audio_duration > 0:
-            final_video_path = tempfile.mktemp(suffix=".mp4")
-            try:
-                final_video_path = create_final_video_with_audio_sync(
-                    video_clips, audio_path, final_video_path, transition_type=transition_option
-                )
-                if final_video_path:
-                    st.video(final_video_path)
-                    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                    st.download_button("Download Script", final_script, "script.txt")
-            except Exception as e:
-                logging.error(f"Error creating final video: {e}")
-                st.error("Failed to create the final video.")
-        else:
-            st.error("No valid audio or video clips were created.")
+            if video_clips:
+                final_video_path = tempfile.mktemp(suffix=".mp4")
+                try:
+                    final_video_path = create_final_video_with_audio_sync(
+                        video_clips, audio_path, final_video_path, transition_type=transition_option
+                    )
+                    if final_video_path:
+                        st.video(final_video_path)
+                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                        st.download_button("Download Script", final_script, "script.txt")
+                except Exception as e:
+                    logging.error(f"Error creating final video: {e}")
+                    st.error("Failed to create the final video.")
+            else:
+                st.error("No valid video clips were created.")
