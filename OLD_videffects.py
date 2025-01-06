@@ -68,7 +68,7 @@ def generate_combined_summary_with_narration(all_text, school_name="the highligh
         return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
 # Function to generate audio from a script using OpenAI
-def generate_audio_with_openai(script, voice="alloy"):
+def generate_audio_with_openai(script, voice="shimmer"):
     try:
         response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
         audio_path = tempfile.mktemp(suffix=".mp3")
@@ -116,7 +116,7 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         return None
 
 # Function to combine video clips with transitions and audio
-def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
+def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", video_duration=60, fps=24):
     try:
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
@@ -124,22 +124,24 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         # Load audio to determine total duration
         if script_audio_path:
             audio = AudioFileClip(script_audio_path)
-            total_duration = audio.duration
+            total_audio_duration = audio.duration
         else:
-            raise ValueError("Audio file is required to set the video duration.")
+            total_audio_duration = video_duration  # Use user-defined duration if no audio
 
-        # Repeat and trim video clips to match audio duration
+        total_duration = min(total_audio_duration, video_duration)
+
+        # Repeat and trim video clips to match total duration
         repeated_clips = []
         current_duration = 0
-        for clip in video_clips:
-            if current_duration + clip.duration > total_duration:
-                clip = clip.subclip(0, total_duration - current_duration)
+        while current_duration < total_duration:
+            for clip in video_clips:
+                if current_duration + clip.duration > total_duration:
+                    clip = clip.subclip(0, total_duration - current_duration)
+                    repeated_clips.append(clip)
+                    current_duration = total_duration
+                    break
                 repeated_clips.append(clip)
-                break
-            repeated_clips.append(clip)
-            current_duration += clip.duration
-            if current_duration >= total_duration:
-                break
+                current_duration += clip.duration
 
         # Apply transitions between clips
         if transition_type == "Fade":
@@ -158,7 +160,8 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         combined_clip = concatenate_videoclips(repeated_clips, method="compose")
 
         # Add audio to the video
-        combined_clip = combined_clip.set_audio(audio)
+        if script_audio_path:
+            combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video file
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -166,8 +169,8 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
         return None
-
-# Streamlit UI
+        
+# Streamlit UI for duration input
 st.title("Custom Video and Script Generator")
 
 # Input fields for URLs
@@ -206,6 +209,7 @@ if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
     transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
+    video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
 if st.button("Generate Video"):
     combined_text = ""
@@ -216,7 +220,7 @@ if st.button("Generate Video"):
 
     if combined_text:
         final_script = generate_combined_summary_with_narration(combined_text, school_name="these amazing schools")
-        audio_path = generate_audio_with_openai(final_script, voice="alloy")
+        audio_path = generate_audio_with_openai(final_script, voice="shimmer")
 
         for url, images in url_image_map.items():
             for img_url in images:
@@ -225,15 +229,16 @@ if st.button("Generate Video"):
                     st.image(image, caption=f"Processing {img_url}")
                     temp_image_path = tempfile.mktemp(suffix=".jpg")
                     image.save(temp_image_path)
-                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
                     if video_clip:
                         video_clips.append(video_clip)
 
         if video_clips and audio_path:
             final_video_path = tempfile.mktemp(suffix=".mp4")
             try:
+                # Pass video duration to the function
                 final_video_path = create_final_video_with_audio_sync(
-                    video_clips, audio_path, final_video_path, transition_type=transition_option
+                    video_clips, audio_path, final_video_path, transition_type=transition_option, video_duration=video_duration
                 )
                 if final_video_path:
                     st.video(final_video_path)
