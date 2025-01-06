@@ -36,8 +36,11 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Function to generate a combined script with narration
-def generate_combined_summary_with_narration(all_text, school_name="the highlighted schools"):
+# Approximate words-per-minute rate for narration
+WORDS_PER_MINUTE = 150
+
+# Function to dynamically generate a summary script based on duration
+def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
     opening_message = (
         f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
         f"Today we’re highlighting {school_name}. Let’s get started!"
@@ -48,9 +51,10 @@ def generate_combined_summary_with_narration(all_text, school_name="the highligh
         "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
         "Until next time, happy college hunting!"
     )
+    max_words = (desired_duration // 60) * WORDS_PER_MINUTE
     system_prompt = (
-        "You are a podcast host. Summarize the text narratively. Include key details like location, accolades, and testimonials. "
-        "End with an engaging note that highlights the school's strengths."
+        f"You are a podcast host. Summarize the text narratively to fit within {max_words} words. Include key details like location, accolades, and testimonials. "
+        f"End with an engaging note that highlights the school's strengths."
     )
     try:
         response = openai.chat.completions.create(
@@ -64,7 +68,7 @@ def generate_combined_summary_with_narration(all_text, school_name="the highligh
         full_script = f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}"
         return full_script
     except Exception as e:
-        logging.error(f"Error generating combined summary: {e}")
+        logging.error(f"Error generating dynamic summary: {e}")
         return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
 # Function to generate audio from a script using OpenAI
@@ -219,8 +223,15 @@ if st.button("Generate Video"):
             combined_text += f"\n{text}"
 
     if combined_text:
-        final_script = generate_combined_summary_with_narration(combined_text, school_name="these amazing schools")
+        # Generate script based on user-defined duration
+        final_script = generate_dynamic_summary_with_duration(combined_text, video_duration, school_name="these amazing schools")
         audio_path = generate_audio_with_openai(final_script, voice="shimmer")
+
+        # Ensure the audio duration matches the user-defined video duration
+        audio_duration = 0
+        if audio_path:
+            audio = AudioFileClip(audio_path)
+            audio_duration = audio.duration
 
         for url, images in url_image_map.items():
             for img_url in images:
@@ -233,12 +244,11 @@ if st.button("Generate Video"):
                     if video_clip:
                         video_clips.append(video_clip)
 
-        if video_clips and audio_path:
+        if video_clips and audio_duration > 0:
             final_video_path = tempfile.mktemp(suffix=".mp4")
             try:
-                # Pass video duration to the function
                 final_video_path = create_final_video_with_audio_sync(
-                    video_clips, audio_path, final_video_path, transition_type=transition_option, video_duration=video_duration
+                    video_clips, audio_path, final_video_path, transition_type=transition_option, video_duration=audio_duration
                 )
                 if final_video_path:
                     st.video(final_video_path)
