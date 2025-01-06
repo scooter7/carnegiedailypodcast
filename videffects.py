@@ -1,15 +1,13 @@
 import streamlit as st
 from bs4 import BeautifulSoup
 import requests
-from urllib.parse import urljoin
+import replicate
 import openai
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
 from io import BytesIO
 import logging
-import cv2
-import numpy as np
 import os
 
 logging.basicConfig(level=logging.INFO)
@@ -83,40 +81,49 @@ def generate_audio_with_openai(script, voice="shimmer"):
         logging.error(f"Error generating audio: {e}")
         return None
 
-# Apply optional image effects
-def apply_image_effect(image, effect):
-    if effect == "Cartoon":
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        gray = cv2.medianBlur(gray, 5)
-        edges = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9
-        )
-        color = cv2.bilateralFilter(image, 9, 300, 300)
-        return cv2.bitwise_and(color, color, mask=edges)
-    elif effect == "Anime":
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 100, 200)
-        blurred = cv2.GaussianBlur(image, (15, 15), 0)
-        return cv2.bitwise_and(blurred, blurred, mask=edges)
-    elif effect == "Sketch":
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        inverted = cv2.bitwise_not(gray)
-        blurred = cv2.GaussianBlur(inverted, (21, 21), 0)
-        return cv2.divide(gray, 255 - blurred, scale=256)
-    return image
+# Apply image effects using Replicate
+def apply_replicate_effect(image_path, effect):
+    try:
+        # Map effect names to Replicate models
+        replicate_models = {
+            "Cartoon": "catacolabs/cartoonify",
+            "Anime": "cjwbw/videocrafter2-anime",
+            "Sketch": "catacolabs/pencil-sketch",
+        }
+        model_name = replicate_models.get(effect)
+        if not model_name:
+            logging.warning(f"No Replicate model found for effect: {effect}")
+            return image_path  # Return original image if no model matches
 
-# Function to create a video clip with optional effects
+        # Initialize Replicate client
+        replicate_api_key = st.secrets["replicate"]["api_key"]
+        client = replicate.Client(api_token=replicate_api_key)
+
+        # Call the Replicate API
+        with open(image_path, "rb") as img_file:
+            response = client.run(
+                model_name,
+                input={"image": img_file}
+            )
+
+        # Save the processed image to a temporary file
+        output_path = tempfile.mktemp(suffix=".jpg")
+        response_content = requests.get(response).content
+        with open(output_path, "wb") as out_file:
+            out_file.write(response_content)
+
+        return output_path
+    except Exception as e:
+        logging.error(f"Error applying Replicate effect '{effect}': {e}")
+        return image_path  # Return the original image in case of failure
+
+# Function to create a video clip with Replicate effects
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
-        img = cv2.imread(image_path)
-        if img is None:
-            raise ValueError("Image not found or invalid.")
-        processed_img = apply_image_effect(img, effect)
-        output_path = tempfile.mktemp(suffix=".jpg")
-        cv2.imwrite(output_path, processed_img)
-        return ImageClip(output_path).set_duration(duration).set_fps(fps)
+        processed_image_path = apply_replicate_effect(image_path, effect)
+        return ImageClip(processed_image_path).set_duration(duration).set_fps(fps)
     except Exception as e:
-        logging.error(f"Error processing image for video clip: {e}")
+        logging.error(f"Error creating video clip: {e}")
         return None
 
 # Function to combine video clips with transitions and synchronize with audio
@@ -173,85 +180,24 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         return None
 
 # Streamlit UI
-st.title("Custom Video and Script Generator")
+st.title("Custom Video and Script Generator with AI Effects")
 
-# Input fields for URLs
-def url_input_fields():
-    urls = []
-    with st.container():
-        st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
-        for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
-            urls.append(url)
-    return urls
-
-# Input fields for images
-def image_input_fields(urls):
-    url_image_map = {}
-    for i, url in enumerate(urls):
-        st.subheader(f"Images for {url}")
-        num_images = st.number_input(
-            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
-        )
-        images = []
-        for j in range(num_images):
-            image_url = st.text_input(
-                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
-            )
-            images.append(image_url)
-        url_image_map[url] = images
-    return url_image_map
-
-urls = url_input_fields()
-video_clips = []
-
-if urls:
-    url_image_map = image_input_fields(urls)
-    effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
-    video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
+urls = st.text_area("Enter webpage URLs (comma-separated)").split(",")
+effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
 
 if st.button("Generate Video"):
-    combined_text = ""
+    video_clips = []
     for url in urls:
         text = scrape_text_from_url(url)
-        if text:
-            combined_text += f"\n{text}"
+        images = [...]  # Your logic to fetch image URLs
+        for img_url in images:
+            image = download_image_from_url(img_url)
+            temp_image_path = tempfile.mktemp(suffix=".jpg")
+            image.save(temp_image_path)
 
-    if combined_text:
-        # Generate script based on user-defined duration
-        final_script = generate_dynamic_summary_with_duration(combined_text, video_duration, school_name="these amazing schools")
-        audio_path = generate_audio_with_openai(final_script, voice="shimmer")
+            video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+            if video_clip:
+                video_clips.append(video_clip)
 
-        # Ensure the audio duration matches the user-defined video duration
-        if audio_path:
-            audio = AudioFileClip(audio_path)
-            audio_duration = audio.duration
-
-            for url, images in url_image_map.items():
-                for img_url in images:
-                    image = download_image_from_url(img_url)
-                    if image:
-                        st.image(image, caption=f"Processing {img_url}")
-                        temp_image_path = tempfile.mktemp(suffix=".jpg")
-                        image.save(temp_image_path)
-                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-                        if video_clip:
-                            video_clips.append(video_clip)
-
-            if video_clips:
-                final_video_path = tempfile.mktemp(suffix=".mp4")
-                try:
-                    final_video_path = create_final_video_with_audio_sync(
-                        video_clips, audio_path, final_video_path, transition_type=transition_option
-                    )
-                    if final_video_path:
-                        st.video(final_video_path)
-                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                        st.download_button("Download Script", final_script, "script.txt")
-                except Exception as e:
-                    logging.error(f"Error creating final video: {e}")
-                    st.error("Failed to create the final video.")
-            else:
-                st.error("No valid video clips were created.")
+    final_video_path = tempfile.mktemp(suffix=".mp4")
+    create_final_video_with_audio_sync(video_clips, audio_path, final_video_path)
