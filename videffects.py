@@ -57,7 +57,7 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, school_na
         f"End with an engaging note that highlights the school's strengths."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
