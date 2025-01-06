@@ -53,8 +53,8 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, school_na
     )
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
     system_prompt = (
-        f"You are a podcast host. Summarize the text narratively to fit within {max_words} words. Include key details like location, accolades, and testimonials. "
-        f"End with an engaging note that highlights the school's strengths."
+        f"As a show host, summarize the text narratively to fit within {max_words} words. Include key details like location, accolades, and testimonials. "
+        f"Speak naturally in terms of pace, and be enthusiastic in your tone."
     )
     try:
         response = openai.chat.completions.create(
