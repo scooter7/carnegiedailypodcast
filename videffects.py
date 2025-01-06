@@ -216,7 +216,7 @@ if st.button("Generate Video"):
 
     if combined_text:
         final_script = generate_combined_summary_with_narration(combined_text, school_name="these amazing schools")
-        audio_path = generate_audio_with_openai(final_script, voice="alloy")
+        audio_path = generate_audio_with_openai(final_script, voice="shimmer")
 
         for url, images in url_image_map.items():
             for img_url in images:
