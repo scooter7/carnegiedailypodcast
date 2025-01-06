@@ -188,7 +188,9 @@ if st.button("Generate Video"):
         final_video_path = create_final_video_with_audio(video_clips, audio_path, final_video_path)
 
         # Verify final video and display
-        if os.path.exists(final_video_path):
+        if final_video_path and os.path.exists(final_video_path):
             st.video(final_video_path)
         else:
             st.error("Failed to create the final video. Please check the processing pipeline.")
+    else:
+        st.error("Video clips or audio are missing. Please check your inputs.")
