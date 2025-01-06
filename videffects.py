@@ -73,7 +73,7 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, school_na
 # Function to generate audio from a script using OpenAI
 def generate_audio_with_openai(script, voice="shimmer"):
     try:
-        response = openai.Audio.create(model="tts-1", voice=voice, input=script)
+        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
         audio_path = tempfile.mktemp(suffix=".mp3")
         with open(audio_path, "wb") as f:
             f.write(response.content)
