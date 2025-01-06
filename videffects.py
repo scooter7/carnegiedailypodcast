@@ -14,6 +14,9 @@ import os
 
 logging.basicConfig(level=logging.INFO)
 
+# Approximate words-per-minute rate for narration
+WORDS_PER_MINUTE = 150
+
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
     try:
@@ -36,9 +39,6 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Approximate words-per-minute rate for narration
-WORDS_PER_MINUTE = 150
-
 # Function to dynamically generate a summary script based on duration
 def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
     opening_message = (
@@ -57,11 +57,11 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, school_na
         f"End with an engaging note that highlights the school's strengths."
     )
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Summarize this combined text: {all_text}"},
+                {"role": "user", "content": f"Summarize this text: {all_text}"},
             ],
         )
         dynamic_summary = response.choices[0].message.content.strip()
@@ -120,7 +120,7 @@ def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
         return None
 
 # Function to combine video clips with transitions and audio
-def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", video_duration=60, fps=24):
+def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, transition_type="None", fps=24):
     try:
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
@@ -130,19 +130,17 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
             audio = AudioFileClip(script_audio_path)
             total_audio_duration = audio.duration
         else:
-            total_audio_duration = video_duration  # Use user-defined duration if no audio
-
-        total_duration = min(total_audio_duration, video_duration)
+            raise ValueError("Audio file is required to create a synchronized video.")
 
         # Repeat and trim video clips to match total duration
         repeated_clips = []
         current_duration = 0
-        while current_duration < total_duration:
+        while current_duration < total_audio_duration:
             for clip in video_clips:
-                if current_duration + clip.duration > total_duration:
-                    clip = clip.subclip(0, total_duration - current_duration)
+                if current_duration + clip.duration > total_audio_duration:
+                    clip = clip.subclip(0, total_audio_duration - current_duration)
                     repeated_clips.append(clip)
-                    current_duration = total_duration
+                    current_duration = total_audio_duration
                     break
                 repeated_clips.append(clip)
                 current_duration += clip.duration
@@ -156,16 +154,12 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
                 video_clips_with_transitions.append(clip.crossfadeout(1))
                 video_clips_with_transitions.append(next_clip.crossfadein(1))
             repeated_clips = video_clips_with_transitions
-        elif transition_type == "Slide":
-            # Placeholder for slide transition logic
-            pass
 
         # Concatenate all clips
         combined_clip = concatenate_videoclips(repeated_clips, method="compose")
 
         # Add audio to the video
-        if script_audio_path:
-            combined_clip = combined_clip.set_audio(audio)
+        combined_clip = combined_clip.set_audio(audio)
 
         # Write the final video file
         combined_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
@@ -173,8 +167,8 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
     except Exception as e:
         logging.error(f"Error generating final video: {e}")
         return None
-        
-# Streamlit UI for duration input
+
+# Streamlit UI
 st.title("Custom Video and Script Generator")
 
 # Input fields for URLs
@@ -208,7 +202,6 @@ def image_input_fields(urls):
 urls = url_input_fields()
 video_clips = []
 
-# Main processing logic
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
@@ -248,7 +241,7 @@ if st.button("Generate Video"):
             final_video_path = tempfile.mktemp(suffix=".mp4")
             try:
                 final_video_path = create_final_video_with_audio_sync(
-                    video_clips, audio_path, final_video_path, transition_type=transition_option, video_duration=audio_duration
+                    video_clips, audio_path, final_video_path, transition_type=transition_option
                 )
                 if final_video_path:
                     st.video(final_video_path)
