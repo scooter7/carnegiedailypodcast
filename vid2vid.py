@@ -4,7 +4,11 @@ import tempfile
 import requests
 
 # Access API key from Streamlit secrets
-REPLICATE_API_TOKEN = st.secrets["replicate"]["api_key"]
+try:
+    REPLICATE_API_TOKEN = st.secrets["replicate"]["api_key"]
+except KeyError:
+    st.error("Replicate API Key not found in secrets. Please configure it.")
+    st.stop()
 
 # Initialize Replicate client
 client = replicate.Client(api_token=REPLICATE_API_TOKEN)
@@ -28,7 +32,6 @@ if uploaded_file is not None:
     temp_input.close()
 
     if st.button("Apply Effect"):
-        # Get the model path
         model_name = effects[selected_effect]
         
         st.text(f"Processing with {selected_effect} effect. This may take some time...")
@@ -36,7 +39,7 @@ if uploaded_file is not None:
         try:
             # Run the model with replicate.run()
             output_url = replicate.run(
-                model_name,  # Example: "cjwbw/videocrafter2"
+                model_name, 
                 input={"video": open(temp_input.name, "rb")}  # Adjust based on model's input API
             )
 
