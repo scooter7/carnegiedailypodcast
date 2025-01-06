@@ -1,7 +1,6 @@
 import streamlit as st
-import replicate
-import tempfile
 import requests
+import tempfile
 
 # Validate the API key from Streamlit secrets
 try:
@@ -11,9 +10,6 @@ try:
 except KeyError:
     st.error("Replicate API Key not found in secrets. Please configure it.")
     st.stop()
-
-# Initialize Replicate client
-client = replicate.Client(api_token=REPLICATE_API_TOKEN)
 
 # File uploader for video
 uploaded_file = st.file_uploader("Upload a video", type=["mp4", "avi", "mov"])
@@ -35,34 +31,25 @@ if uploaded_file is not None:
 
     if st.button("Apply Effect"):
         model_name = effects[selected_effect]
-        
         st.text(f"Processing with {selected_effect} effect. This may take some time...")
 
         try:
-            # Run the model with replicate.run()
-            output_url = replicate.run(
-                model_name, 
-                input={"video": open(temp_input.name, "rb")}  # Adjust based on model's input API
-            )
+            # Direct HTTP call to Replicate API
+            url = f"https://api.replicate.com/v1/predictions"
+            headers = {"Authorization": f"Token {REPLICATE_API_TOKEN}"}
+            payload = {
+                "version": model_name,
+                "input": {
+                    "video": open(temp_input.name, "rb")  # Adjust based on model's input API
+                }
+            }
+            response = requests.post(url, headers=headers, json=payload)
 
-            # Save the processed video
-            temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-            response = requests.get(output_url, stream=True)
-            with open(temp_output.name, "wb") as out_file:
-                for chunk in response.iter_content(chunk_size=8192):
-                    out_file.write(chunk)
+            if response.status_code == 200:
+                output_url = response.json()["output"]
+                st.video(output_url)
+            else:
+                st.error(f"Error: {response.status_code}, Details: {response.json()}")
 
-            # Display the processed video
-            st.video(temp_output.name)
-            with open(temp_output.name, "rb") as file:
-                st.download_button(
-                    label="Download Processed Video",
-                    data=file,
-                    file_name="processed_video.mp4",
-                    mime="video/mp4"
-                )
         except Exception as e:
             st.error(f"An error occurred: {e}")
-
-        # Cleanup temporary files
-        temp_input.close()
