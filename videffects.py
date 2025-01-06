@@ -1,8 +1,8 @@
 import streamlit as st
 from bs4 import BeautifulSoup
 import requests
-import replicate
 import openai
+import replicate
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
@@ -42,7 +42,7 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Function to generate a summary script dynamically based on duration
+# Function to dynamically generate a summary script based on duration
 def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
     opening_message = (
         f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
@@ -89,8 +89,7 @@ def generate_audio_with_openai(script, voice="shimmer"):
 def apply_replicate_effect(image_path, effect):
     try:
         model_name = REPLICATE_MODELS.get(effect)
-        if not model_name:
-            logging.warning(f"No Replicate model found for effect: {effect}")
+        if not model_name or effect == "None":
             return image_path
 
         replicate_api_key = st.secrets["replicate"]["api_key"]
