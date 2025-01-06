@@ -68,7 +68,7 @@ def generate_combined_summary_with_narration(all_text, school_name="the highligh
         return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
 # Function to generate audio from a script using OpenAI
-def generate_audio_with_openai(script, voice="alloy"):
+def generate_audio_with_openai(script, voice="shimmer"):
     try:
         response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
         audio_path = tempfile.mktemp(suffix=".mp3")
