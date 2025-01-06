@@ -28,17 +28,17 @@ if uploaded_file is not None:
     temp_input.close()
 
     if st.button("Apply Effect"):
+        # Get the model path
         model_name = effects[selected_effect]
-        model = client.models.get(model_name)
-
-        with open(temp_input.name, "rb") as video_file:
-            video_bytes = video_file.read()
-
+        
         st.text(f"Processing with {selected_effect} effect. This may take some time...")
 
         try:
-            # Call the model API
-            output_url = model.predict(video=video_bytes)
+            # Run the model with replicate.run()
+            output_url = replicate.run(
+                model_name,  # Example: "cjwbw/videocrafter2"
+                input={"video": open(temp_input.name, "rb")}  # Adjust based on model's input API
+            )
 
             # Save the processed video
             temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
