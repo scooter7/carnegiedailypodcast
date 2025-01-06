@@ -8,7 +8,6 @@ from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
 from io import BytesIO
 import logging
-import os
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,7 +20,7 @@ def scrape_text_from_url(url):
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.text, "html.parser")
         text = soup.get_text(separator=" ", strip=True)
-        return text[:5000]
+        return text[:5000]  # Limit to 5000 characters to avoid overload
     except Exception as e:
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
@@ -84,7 +83,6 @@ def generate_audio_with_openai(script, voice="shimmer"):
 # Apply image effects using Replicate
 def apply_replicate_effect(image_path, effect):
     try:
-        # Map effect names to Replicate models
         replicate_models = {
             "Cartoon": "catacolabs/cartoonify",
             "Anime": "cjwbw/videocrafter2-anime",
@@ -95,18 +93,12 @@ def apply_replicate_effect(image_path, effect):
             logging.warning(f"No Replicate model found for effect: {effect}")
             return image_path  # Return original image if no model matches
 
-        # Initialize Replicate client
         replicate_api_key = st.secrets["replicate"]["api_key"]
         client = replicate.Client(api_token=replicate_api_key)
 
-        # Call the Replicate API
         with open(image_path, "rb") as img_file:
-            response = client.run(
-                model_name,
-                input={"image": img_file}
-            )
+            response = client.run(model_name, input={"image": img_file})
 
-        # Save the processed image to a temporary file
         output_path = tempfile.mktemp(suffix=".jpg")
         response_content = requests.get(response).content
         with open(output_path, "wb") as out_file:
@@ -115,7 +107,7 @@ def apply_replicate_effect(image_path, effect):
         return output_path
     except Exception as e:
         logging.error(f"Error applying Replicate effect '{effect}': {e}")
-        return image_path  # Return the original image in case of failure
+        return image_path
 
 # Function to create a video clip with Replicate effects
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
@@ -132,20 +124,14 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
         if not video_clips:
             raise ValueError("No video clips provided for final video creation.")
 
-        # Load audio to determine total duration
-        if script_audio_path:
-            audio = AudioFileClip(script_audio_path)
-            total_audio_duration = audio.duration
-        else:
-            raise ValueError("Audio file is required to create a synchronized video.")
+        audio = AudioFileClip(script_audio_path)
+        total_audio_duration = audio.duration
 
-        # Repeat and trim video clips to match total duration
         repeated_clips = []
         current_duration = 0
         while current_duration < total_audio_duration:
             for clip in video_clips:
                 if current_duration + clip.duration > total_audio_duration:
-                    # Trim the last clip to match the remaining duration
                     clip = clip.subclip(0, total_audio_duration - current_duration)
                     repeated_clips.append(clip)
                     current_duration = total_audio_duration
@@ -153,26 +139,10 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
                 repeated_clips.append(clip)
                 current_duration += clip.duration
 
-        # Apply transitions between clips
-        if transition_type == "Fade":
-            video_clips_with_transitions = []
-            for i in range(len(repeated_clips) - 1):
-                clip = repeated_clips[i]
-                next_clip = repeated_clips[i + 1]
-                video_clips_with_transitions.append(clip.crossfadeout(1))
-                video_clips_with_transitions.append(next_clip.crossfadein(1))
-            repeated_clips = video_clips_with_transitions
-
-        # Concatenate all clips
         combined_clip = concatenate_videoclips(repeated_clips, method="compose")
-
-        # Add audio to the video
         combined_clip = combined_clip.set_audio(audio)
-
-        # Ensure the final video length matches the audio duration
         final_clip = combined_clip.subclip(0, total_audio_duration)
 
-        # Write the final video file
         final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
         return output_path
     except Exception as e:
@@ -182,22 +152,59 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
 # Streamlit UI
 st.title("Custom Video and Script Generator with AI Effects")
 
-urls = st.text_area("Enter webpage URLs (comma-separated)").split(",")
-effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
+# Input fields for URLs
+def url_input_fields():
+    urls = []
+    with st.container():
+        st.subheader("Enter Page URLs")
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+        for i in range(num_urls):
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
+            urls.append(url)
+    return urls
+
+# Input fields for images associated with each URL
+def image_input_fields(urls):
+    url_image_map = {}
+    for i, url in enumerate(urls):
+        st.subheader(f"Images for {url}")
+        num_images = st.number_input(
+            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
+        )
+        images = []
+        for j in range(num_images):
+            image_url = st.text_input(
+                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
+            )
+            images.append(image_url)
+        url_image_map[url] = images
+    return url_image_map
+
+urls = url_input_fields()
+if urls:
+    url_image_map = image_input_fields(urls)
+    effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
+    transition_option = st.selectbox("Select a Transition:", ["None", "Fade"])
+    video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
 if st.button("Generate Video"):
     video_clips = []
-    for url in urls:
+    combined_text = ""
+    for url, images in url_image_map.items():
         text = scrape_text_from_url(url)
-        images = [...]  # Your logic to fetch image URLs
+        combined_text += f"\n{text}" if text else ""
         for img_url in images:
             image = download_image_from_url(img_url)
-            temp_image_path = tempfile.mktemp(suffix=".jpg")
-            image.save(temp_image_path)
+            if image:
+                temp_image_path = tempfile.mktemp(suffix=".jpg")
+                image.save(temp_image_path)
+                video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
+                if video_clip:
+                    video_clips.append(video_clip)
 
-            video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
-            if video_clip:
-                video_clips.append(video_clip)
-
+    final_script = generate_dynamic_summary_with_duration(combined_text, video_duration)
+    audio_path = generate_audio_with_openai(final_script)
     final_video_path = tempfile.mktemp(suffix=".mp4")
-    create_final_video_with_audio_sync(video_clips, audio_path, final_video_path)
+    if video_clips and audio_path:
+        create_final_video_with_audio_sync(video_clips, audio_path, final_video_path)
+        st.video(final_video_path)
