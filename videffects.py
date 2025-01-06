@@ -6,6 +6,7 @@ import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
 from io import BytesIO
+import os
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +39,6 @@ def download_image_from_url(url):
 # Function to apply effects using Replicate API
 def apply_replicate_effect(image_path, effect):
     try:
-        # Map effects to Replicate models
         replicate_models = {
             "Cartoon": "catacolabs/cartoonify",
             "Anime": "cjwbw/videocrafter2-anime",
@@ -49,11 +49,9 @@ def apply_replicate_effect(image_path, effect):
             logging.warning(f"No Replicate model found for effect: {effect}")
             return image_path  # Return original image if no effect is selected
 
-        # Initialize Replicate client
         replicate_api_key = st.secrets["replicate"]["api_key"]
         client = replicate.Client(api_token=replicate_api_key)
 
-        # Call the Replicate API
         logging.info(f"Applying effect '{effect}' using model '{model_name}'")
         with open(image_path, "rb") as img_file:
             response = client.run(
@@ -81,10 +79,7 @@ def apply_replicate_effect(image_path, effect):
 # Function to create video clip from processed image
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
-        # Apply the effect and get the processed image path
         processed_image_path = apply_replicate_effect(image_path, effect)
-
-        # Create a video clip using the processed image
         return ImageClip(processed_image_path).set_duration(duration).set_fps(fps)
     except Exception as e:
         logging.error(f"Error creating video clip: {e}")
@@ -120,9 +115,10 @@ def create_final_video_with_audio(video_clips, audio_path, output_path, fps=24):
 
         # Save the final video
         final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
+        logging.info(f"Final video successfully created at {output_path}")
         return output_path
     except Exception as e:
-        logging.error(f"Error generating final video: {e}")
+        logging.error(f"Error during final video creation: {e}")
         return None
 
 # Streamlit UI
@@ -165,6 +161,8 @@ if urls:
 if st.button("Generate Video"):
     video_clips = []
     combined_text = ""
+
+    # Process each URL and its associated images
     for url, images in url_image_map.items():
         text = scrape_text_from_url(url)
         combined_text += f"\n{text}" if text else ""
@@ -173,16 +171,24 @@ if st.button("Generate Video"):
             if image:
                 temp_image_path = tempfile.mktemp(suffix=".jpg")
                 image.save(temp_image_path)
+
+                # Apply effect and create video clip
                 video_clip = create_video_clip_with_effect(temp_image_path, effect_option)
                 if video_clip:
                     video_clips.append(video_clip)
 
-    # Generate dynamic script and audio
-    script = f"Your dynamic script based on: {combined_text}"
-    audio_path = tempfile.mktemp(suffix=".mp3")  # Simulate audio generation
+    # Generate audio (simulating audio for now)
+    audio_path = tempfile.mktemp(suffix=".mp3")
+    with open(audio_path, "wb") as f:
+        f.write(b"Simulated audio content")
 
     # Create final video
-    final_video_path = tempfile.mktemp(suffix=".mp4")
-    if video_clips and audio_path:
-        create_final_video_with_audio(video_clips, audio_path, final_video_path)
-        st.video(final_video_path)
+    if video_clips and os.path.exists(audio_path):
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+        final_video_path = create_final_video_with_audio(video_clips, audio_path, final_video_path)
+
+        # Verify final video and display
+        if os.path.exists(final_video_path):
+            st.video(final_video_path)
+        else:
+            st.error("Failed to create the final video. Please check the processing pipeline.")
