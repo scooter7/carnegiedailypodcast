@@ -62,7 +62,7 @@ def extract_keywords(text):
     """
     prompt = "Extract a list of concise, individual keywords (comma-separated) from the following text:"
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt},
