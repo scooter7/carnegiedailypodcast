@@ -21,3 +21,5 @@ pyav
 tqdm
 opencv-python
 replicate
+python-docx
+PyPDF2
