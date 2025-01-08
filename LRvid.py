@@ -71,31 +71,54 @@ def extract_keywords(text):
 # Function to generate illustrations using DALL-E 3
 def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     """
-    Generates illustrations for a list of keywords using DALL-E 3.
+    Generates illustrations for a list of keywords using DALL-E 3 via the chat completions API.
     Returns a list of file paths to the generated images.
     """
     illustration_paths = []
     for keyword in keywords:
         try:
             # Create a descriptive prompt for DALL-E
-            prompt = f"A {style} of {keyword}"
-            
-            # Call DALL-E 3 API to generate the image
-            response = openai.Image.create(
-                prompt=prompt,
-                n=1,  # Generate one image per prompt
-                size="1024x1024"
+            prompt = f"Create a {style} of {keyword}."
+
+            # Use chat completion API to generate the image request
+            response = openai.chat.completions.create(
+                model="gpt-4o",  # Ensure you use a model that supports functions
+                messages=[
+                    {"role": "system", "content": "You are an image generation assistant."},
+                    {"role": "user", "content": prompt}
+                ],
+                functions=[
+                    {
+                        "name": "generate_image",
+                        "description": "Generate an image based on a given description.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {"type": "string", "description": "Text description of the image to generate."},
+                                "size": {"type": "string", "enum": ["256x256", "512x512", "1024x1024"]},
+                            },
+                            "required": ["prompt", "size"]
+                        }
+                    }
+                ],
+                function_call={"name": "generate_image"}
             )
-            
-            # Get the image URL from the response
-            image_url = response["data"][0]["url"]
-            
+
+            # Extract the function call arguments from the response
+            image_args = response.choices[0].message["function_call"]["arguments"]
+            image_prompt = eval(image_args)["prompt"]
+            image_size = eval(image_args)["size"]
+
+            # Generate the image using the DALL-E endpoint
+            image_response = openai.Image.create(prompt=image_prompt, size=image_size, n=1)
+            image_url = image_response["data"][0]["url"]
+
             # Download the image and save it locally
             image_path = tempfile.mktemp(suffix=".jpg")
             image_data = requests.get(image_url).content
             with open(image_path, "wb") as f:
                 f.write(image_data)
-            
+
             illustration_paths.append(image_path)
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
