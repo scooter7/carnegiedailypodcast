@@ -70,20 +70,32 @@ def extract_keywords(text):
 
 # Function to generate illustrations using DALL-E 3
 def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
+    """
+    Generates illustrations for a list of keywords using DALL-E 3.
+    Returns a list of file paths to the generated images.
+    """
     illustration_paths = []
     for keyword in keywords:
         try:
+            # Create a descriptive prompt for DALL-E
             prompt = f"A {style} of {keyword}"
+            
+            # Call DALL-E 3 API to generate the image
             response = openai.Image.create(
                 prompt=prompt,
-                size="1024x1024",
-                n=1
+                n=1,  # Generate one image per prompt
+                size="1024x1024"
             )
+            
+            # Get the image URL from the response
             image_url = response["data"][0]["url"]
+            
+            # Download the image and save it locally
             image_path = tempfile.mktemp(suffix=".jpg")
             image_data = requests.get(image_url).content
             with open(image_path, "wb") as f:
                 f.write(image_data)
+            
             illustration_paths.append(image_path)
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
@@ -151,10 +163,11 @@ if uploaded_file:
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
 
         if st.session_state.selected_keywords:
-            st.subheader("Generated Illustrations:")
-            illustrations = generate_illustrations_with_dalle(
-                st.session_state.selected_keywords,
-                style="pencil sketch"
-            )
-            if illustrations:
-                st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
+    st.subheader("Generated Illustrations:")
+    illustrations = generate_illustrations_with_dalle(
+        st.session_state.selected_keywords,
+        style="pencil sketch"  # You can change the style here
+    )
+    if illustrations:
+        st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
+
