@@ -31,9 +31,15 @@ def generate_placeholder_image(keyword, style, output_path):
     font = ImageFont.truetype(FONT_PATH, size=30)
     text = f"{keyword}\n({style})"
     wrapped_text = textwrap.fill(text, width=20)
-    text_width, text_height = draw.textsize(wrapped_text, font=font)
+
+    # Calculate text dimensions using textbbox
+    text_bbox = draw.textbbox((0, 0), wrapped_text, font=font)
+    text_width = text_bbox[2] - text_bbox[0]
+    text_height = text_bbox[3] - text_bbox[1]
+
     x = (img.width - text_width) // 2
     y = (img.height - text_height) // 2
+
     draw.text((x, y), wrapped_text, font=font, fill="black")
     img.save(output_path)
 
