@@ -1,15 +1,12 @@
 import streamlit as st
 from bs4 import BeautifulSoup
 import requests
-from urllib.parse import urljoin
 import openai
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
-from io import BytesIO
 import logging
 import os
-import replicate
 from PyPDF2 import PdfReader
 import docx
 
@@ -42,8 +39,8 @@ def summarize_text(text, detail_level="Concise"):
     max_words = summary_lengths.get(detail_level, 100)
     system_prompt = f"Summarize the following text in up to {max_words} words. Focus on key points and maintain clarity."
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text},
@@ -56,45 +53,37 @@ def summarize_text(text, detail_level="Concise"):
 
 # Function to extract keywords using OpenAI
 def extract_keywords(text):
-    """
-    Extracts keywords from the provided text.
-    Returns a list of clean individual keywords.
-    """
     prompt = "Extract a list of concise, individual keywords (comma-separated) from the following text:"
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
             messages=[
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": text},
             ],
         )
-        # Split the result into a list of keywords
         keywords = response.choices[0].message.content.strip()
         return [kw.strip() for kw in keywords.split(",") if kw.strip()]
     except Exception as e:
         logging.error(f"Error extracting keywords: {e}")
         return []
 
-# Function to generate illustrations based on keywords
-def generate_illustrations(keywords):
-    """
-    Generates pencil sketch illustrations for a list of keywords using the Replicate API.
-    Returns a list of file paths to the generated images.
-    """
+# Function to generate illustrations using DALL-E 3
+def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     illustration_paths = []
     for keyword in keywords:
         try:
-            # Ensure the keyword is a clean string
-            clean_keyword = keyword.strip()
-            # Generate illustration using Replicate API
-            response = replicate.Client(api_token=st.secrets["replicate"]["api_key"]).run(
-                "catacolabs/pencil-sketch", input={"prompt": clean_keyword}
+            prompt = f"A {style} of {keyword}"
+            response = openai.Image.create(
+                prompt=prompt,
+                size="1024x1024",
+                n=1
             )
-            # Save the generated image locally
+            image_url = response["data"][0]["url"]
             image_path = tempfile.mktemp(suffix=".jpg")
+            image_data = requests.get(image_url).content
             with open(image_path, "wb") as f:
-                f.write(requests.get(response).content)
+                f.write(image_data)
             illustration_paths.append(image_path)
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
@@ -103,7 +92,7 @@ def generate_illustrations(keywords):
 # Function to generate audio from text using OpenAI
 def generate_audio(script, voice="shimmer"):
     try:
-        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
+        response = openai.Audio.create(model="tts-1", voice=voice, input=script)
         audio_path = tempfile.mktemp(suffix=".mp3")
         with open(audio_path, "wb") as f:
             f.write(response.content)
@@ -115,20 +104,10 @@ def generate_audio(script, voice="shimmer"):
 # Function to create a video from illustrations and audio
 def create_video(illustrations, audio_path, transition="None", duration_per_image=5):
     try:
-        clips = [
-            ImageClip(img).set_duration(duration_per_image)
-            for img in illustrations
-        ]
-        
-        if transition == "Fade":
-            clips = [clip.crossfadein(1) for clip in clips]
-        elif transition == "Swipe":
-            clips = [clip.slidein(1) for clip in clips]
-
+        clips = [ImageClip(img).set_duration(duration_per_image) for img in illustrations]
         combined_clip = concatenate_videoclips(clips, method="compose")
         audio = AudioFileClip(audio_path)
         combined_clip = combined_clip.set_audio(audio)
-
         video_path = tempfile.mktemp(suffix=".mp4")
         combined_clip.write_videofile(video_path, codec="libx264", audio_codec="aac")
         return video_path
@@ -173,6 +152,9 @@ if uploaded_file:
 
         if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
-            illustrations = generate_illustrations(st.session_state.selected_keywords)
+            illustrations = generate_illustrations_with_dalle(
+                st.session_state.selected_keywords,
+                style="pencil sketch"
+            )
             if illustrations:
                 st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
