@@ -163,11 +163,10 @@ if uploaded_file:
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
 
         if st.session_state.selected_keywords:
-    st.subheader("Generated Illustrations:")
-    illustrations = generate_illustrations_with_dalle(
-        st.session_state.selected_keywords,
-        style="pencil sketch"  # You can change the style here
-    )
-    if illustrations:
-        st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
-
+            st.subheader("Generated Illustrations:")
+            illustrations = generate_illustrations_with_dalle(
+                st.session_state.selected_keywords,
+                style="pencil sketch"  # You can change the style here
+        )
+        if illustrations:
+            st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
