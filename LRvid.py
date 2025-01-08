@@ -103,23 +103,27 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
         try:
             # Generate an artistic description prompt for DALL-E
             prompt = f"Create an artistic illustration of '{keyword}' in a {style} style."
-            
-            # Call the OpenAI DALL-E API using the updated syntax
+
+            # Call the OpenAI DALL-E API using the client
             response = client.images.generate(
                 prompt=prompt,
                 n=1,  # Number of images to generate
                 size="512x512"  # Set the desired image size
             )
 
+            # Extract image URL from the response
+            img_url = response.data[0].url  # Correct way to access the response
+
             # Save the generated image
-            img_url = response["data"][0]["url"]
             output_path = tempfile.mktemp(suffix=".png")
             img_content = requests.get(img_url).content
             with open(output_path, "wb") as f:
                 f.write(img_content)
             illustration_paths.append(output_path)
+
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
+
     return illustration_paths
 
 def generate_audio(script, voice="shimmer"):
@@ -179,8 +183,14 @@ if uploaded_file:
                 st.session_state.selected_keywords,
                 style="pencil sketch"
         )
-        valid_illustrations = [img for img in illustrations if os.path.exists(img)]
-        if valid_illustrations:
-            st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
+
+        if illustrations:  # Ensure illustrations is not empty
+            valid_illustrations = [img for img in illustrations if os.path.exists(img)]
+            if valid_illustrations:
+                st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
+            else:
+                st.warning("No valid illustrations could be displayed.")
         else:
+            st.warning("Illustrations could not be generated. Ensure your keywords are valid.")
+
             st.warning("No illustrations could be generated. Ensure your keywords are valid.")
