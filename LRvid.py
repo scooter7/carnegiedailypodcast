@@ -140,18 +140,29 @@ if uploaded_file:
         # Extract keywords from the summary
         if "keywords" not in st.session_state:
             st.session_state.keywords = extract_keywords(summary)
+            st.session_state.selected_keywords = []
 
         # Checkbox list for keyword selection
         st.subheader("Select Keywords for Illustrations:")
-        selected_keywords = []
         for keyword in st.session_state.keywords:
-            if st.checkbox(keyword, key=f"keyword_{keyword}"):
-                selected_keywords.append(keyword)
+            is_selected = st.checkbox(keyword, key=f"keyword_{keyword}")
+            if is_selected and keyword not in st.session_state.selected_keywords:
+                st.session_state.selected_keywords.append(keyword)
+            elif not is_selected and keyword in st.session_state.selected_keywords:
+                st.session_state.selected_keywords.remove(keyword)
 
-        # Save selected keywords to state
-        st.session_state.selected_keywords = selected_keywords
+        # Allow the user to input additional keywords
+        st.subheader("Add Additional Keywords:")
+        additional_keywords = st.text_input("Enter additional keywords separated by commas:")
+        if st.button("Process Keywords"):
+            if additional_keywords:
+                new_keywords = [kw.strip() for kw in additional_keywords.split(",") if kw.strip()]
+                st.session_state.selected_keywords.extend(new_keywords)
+                st.session_state.selected_keywords = list(set(st.session_state.selected_keywords))  # Remove duplicates
 
-        # Display the selected keywords and generate illustrations
+            st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
+
+        # Generate illustrations after processing keywords
         if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
             illustrations = generate_illustrations(st.session_state.selected_keywords)
