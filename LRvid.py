@@ -10,6 +10,10 @@ from PyPDF2 import PdfReader
 import docx
 import textwrap
 
+# Set OpenAI API key and initialize the client
+os.environ["OPENAI_API_KEY"] = st.secrets["openai_api_key"]
+client = openai.Client(api_key=os.getenv("OPENAI_API_KEY"))
+
 logging.basicConfig(level=logging.INFO)
 
 WORDS_PER_MINUTE = 150
