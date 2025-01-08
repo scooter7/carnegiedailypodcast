@@ -74,7 +74,7 @@ import json
 # Function to generate illustrations using DALL-E 3
 def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     """
-    Generates illustrations for a list of keywords using DALL-E 3 via the chat completions API.
+    Generates illustrations for a list of keywords using DALL-E 3 via the new OpenAI images/generations API.
     Returns a list of file paths to the generated images.
     """
     illustration_paths = []
@@ -84,42 +84,15 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
             # Construct the descriptive prompt
             prompt = f"Create a {style} of {keyword}."
 
-            # Use OpenAI chat completions API with function calling
-            response = openai.chat.completions.create(
-                model="gpt-4o",  # Ensure the model supports function calling
-                messages=[
-                    {"role": "system", "content": "You are an image generation assistant."},
-                    {"role": "user", "content": prompt},
-                ],
-                functions=[
-                    {
-                        "name": "generate_image",
-                        "description": "Generate an image based on a given description.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "prompt": {"type": "string", "description": "Text description of the image to generate."},
-                                "size": {"type": "string", "enum": ["256x256", "512x512", "1024x1024"]},
-                            },
-                            "required": ["prompt", "size"]
-                        },
-                    }
-                ],
-                function_call={"name": "generate_image"}  # Explicitly request the function
-            )
-
-            # Parse the function call arguments
-            function_call_args = json.loads(response.choices[0].message.function_call.arguments)
-
-            # Generate the image using the parsed arguments
-            image_response = openai.Image.create(
-                prompt=function_call_args["prompt"],
-                size=function_call_args["size"],
-                n=1
+            # Generate the image using the images/generations endpoint
+            response = openai.Image.create(
+                prompt=prompt,
+                n=1,
+                size="512x512"  # Set the desired image size
             )
 
             # Retrieve the image URL
-            image_url = image_response["data"][0]["url"]
+            image_url = response["data"][0]["url"]
 
             # Download the image and save it locally
             image_path = tempfile.mktemp(suffix=".jpg")
@@ -130,15 +103,12 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
             # Append the local image path to the list
             illustration_paths.append(image_path)
 
-        except json.JSONDecodeError as json_error:
-            logging.error(f"JSON parsing error for keyword '{keyword}': {json_error}")
-            st.warning(f"Failed to generate image for '{keyword}'. Invalid function call arguments.")
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
-            st.warning(f"Failed to generate image for '{keyword}'. Skipping.")
+            continue
 
     return illustration_paths
-
+    
 # Function to generate audio from text using OpenAI
 def generate_audio(script, voice="shimmer"):
     try:
