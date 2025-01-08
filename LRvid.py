@@ -69,6 +69,9 @@ def extract_keywords(text):
         return []
 
 # Function to generate illustrations using DALL-E 3
+import json
+
+# Function to generate illustrations using DALL-E 3
 def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     """
     Generates illustrations for a list of keywords using DALL-E 3 via the chat completions API.
@@ -105,8 +108,8 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
                 function_call={"name": "generate_image"}  # Explicitly request the function
             )
 
-            # Parse the function arguments
-            function_call_args = eval(response.choices[0].message["function_call"]["arguments"])
+            # Safely parse the function call arguments
+            function_call_args = json.loads(response.choices[0].message.function_call["arguments"])
 
             # Generate the image using the parsed arguments
             image_response = openai.Image.create(
@@ -127,6 +130,9 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
             # Append the local image path to the list
             illustration_paths.append(image_path)
 
+        except json.JSONDecodeError as json_error:
+            logging.error(f"JSON parsing error for keyword '{keyword}': {json_error}")
+            st.warning(f"Failed to generate image for '{keyword}'. Invalid function call arguments.")
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
             st.warning(f"Failed to generate image for '{keyword}'. Skipping.")
