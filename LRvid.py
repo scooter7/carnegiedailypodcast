@@ -144,12 +144,13 @@ if uploaded_file:
 
         # Checkbox list for keyword selection
         st.subheader("Select Keywords for Illustrations:")
+        selected_keywords = []
         for keyword in st.session_state.keywords:
-            is_selected = st.checkbox(keyword, key=f"keyword_{keyword}")
-            if is_selected and keyword not in st.session_state.selected_keywords:
-                st.session_state.selected_keywords.append(keyword)
-            elif not is_selected and keyword in st.session_state.selected_keywords:
-                st.session_state.selected_keywords.remove(keyword)
+            if st.checkbox(keyword, key=f"keyword_{keyword}"):
+                selected_keywords.append(keyword)
+
+        # Save selected keywords to state
+        st.session_state.selected_keywords = selected_keywords
 
         # Allow the user to input additional keywords
         st.subheader("Add Additional Keywords:")
