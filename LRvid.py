@@ -58,7 +58,7 @@ def summarize_text(text, detail_level="Concise"):
 def extract_keywords(text):
     """
     Extracts keywords from the provided text.
-    Returns a list of keywords.
+    Returns a list of clean individual keywords.
     """
     prompt = "Extract a list of concise, individual keywords (comma-separated) from the following text:"
     try:
@@ -69,8 +69,8 @@ def extract_keywords(text):
                 {"role": "user", "content": text},
             ],
         )
+        # Split the result into a list of keywords
         keywords = response.choices[0].message.content.strip()
-        # Split keywords into a clean list
         return [kw.strip() for kw in keywords.split(",") if kw.strip()]
     except Exception as e:
         logging.error(f"Error extracting keywords: {e}")
@@ -78,12 +78,20 @@ def extract_keywords(text):
 
 # Function to generate illustrations based on keywords
 def generate_illustrations(keywords):
+    """
+    Generates pencil sketch illustrations for a list of keywords using the Replicate API.
+    Returns a list of file paths to the generated images.
+    """
     illustration_paths = []
     for keyword in keywords:
         try:
+            # Ensure the keyword is a clean string
+            clean_keyword = keyword.strip()
+            # Generate illustration using Replicate API
             response = replicate.Client(api_token=st.secrets["replicate"]["api_key"]).run(
-                "catacolabs/pencil-sketch", input={"prompt": keyword}
+                "catacolabs/pencil-sketch", input={"prompt": clean_keyword}
             )
+            # Save the generated image locally
             image_path = tempfile.mktemp(suffix=".jpg")
             with open(image_path, "wb") as f:
                 f.write(requests.get(response).content)
@@ -134,20 +142,16 @@ st.title("Document-to-Video Generator")
 uploaded_file = st.file_uploader("Upload a document (PDF, Word, txt):", type=["pdf", "docx", "txt"])
 
 if uploaded_file:
-    # Extract text from the uploaded document
     text = extract_text_from_document(uploaded_file)
     if text:
-        # Select the level of summarization
         detail_level = st.selectbox("Select Summary Detail Level:", ["Concise", "Medium", "Comprehensive"])
         summary = summarize_text(text, detail_level)
         st.text_area("Generated Summary:", summary, height=150)
 
-        # Extract keywords from the summary
         if "keywords" not in st.session_state:
             st.session_state.keywords = extract_keywords(summary)
             st.session_state.selected_keywords = []
 
-        # Display each keyword as an individual checkbox
         st.subheader("Select Keywords for Illustrations:")
         selected_keywords = []
         for i, keyword in enumerate(st.session_state.keywords):
@@ -155,40 +159,20 @@ if uploaded_file:
             if is_selected:
                 selected_keywords.append(keyword)
 
-        # Update session state with selected keywords
         st.session_state.selected_keywords = selected_keywords
 
-        # Allow the user to input additional keywords
         st.subheader("Add Additional Keywords:")
         additional_keywords = st.text_input("Enter additional keywords separated by commas:")
         if st.button("Process Keywords"):
             if additional_keywords:
                 new_keywords = [kw.strip() for kw in additional_keywords.split(",") if kw.strip()]
                 st.session_state.selected_keywords.extend(new_keywords)
-                st.session_state.selected_keywords = list(set(st.session_state.selected_keywords))  # Remove duplicates
+                st.session_state.selected_keywords = list(set(st.session_state.selected_keywords))
 
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
 
-        # Generate illustrations after processing keywords
         if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
             illustrations = generate_illustrations(st.session_state.selected_keywords)
             if illustrations:
                 st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
-
-                # Video settings
-                transition = st.selectbox("Select Video Transition:", ["None", "Fade", "Swipe"])
-                duration_per_image = st.number_input(
-                    "Duration per Image (seconds):", min_value=1, max_value=10, value=5
-                )
-
-                # Generate audio script
-                script = f"Here are the key highlights: {', '.join(st.session_state.selected_keywords)}. {summary}"
-                audio_path = generate_audio(script)
-
-                if audio_path:
-                    # Create the video with illustrations and audio
-                    video_path = create_video(illustrations, audio_path, transition, duration_per_image)
-                    if video_path:
-                        st.video(video_path)
-                        st.download_button("Download Video", open(video_path, "rb"), "video.mp4")
