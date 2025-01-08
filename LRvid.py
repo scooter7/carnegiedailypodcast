@@ -4,16 +4,50 @@ import requests
 import openai
 import tempfile
 from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import logging
 import os
 from PyPDF2 import PdfReader
 import docx
+import textwrap
 
 logging.basicConfig(level=logging.INFO)
 
-# Approximate words-per-minute rate for narration
+# Constants
 WORDS_PER_MINUTE = 150
+FONT_URL = "https://github.com/scooter7/vidshorts/blob/main/Arial.ttf"
+FONT_PATH = "Arial.ttf"
+
+# Download font for placeholder images
+def download_font(font_url, local_path):
+    if not os.path.exists(local_path):
+        try:
+            response = requests.get(font_url)
+            response.raise_for_status()
+            with open(local_path, "wb") as f:
+                f.write(response.content)
+            logging.info("Font downloaded successfully.")
+        except Exception as e:
+            logging.error(f"Failed to download font: {e}")
+            raise
+
+download_font(FONT_URL, FONT_PATH)
+
+# Placeholder image generation
+def generate_placeholder_image(keyword, style, output_path):
+    try:
+        img = Image.new("RGB", (512, 512), color=(255, 255, 255))
+        draw = ImageDraw.Draw(img)
+        font = ImageFont.truetype(FONT_PATH, size=30)
+        text = f"{keyword}\n({style})"
+        wrapped_text = textwrap.fill(text, width=20)
+        text_width, text_height = draw.textsize(wrapped_text, font=font)
+        x = (img.width - text_width) // 2
+        y = (img.height - text_height) // 2
+        draw.text((x, y), wrapped_text, font=font, fill="black")
+        img.save(output_path)
+    except Exception as e:
+        logging.error(f"Failed to create placeholder image for '{keyword}': {e}")
 
 # Function to extract text from uploaded documents
 def extract_text_from_document(file):
@@ -39,7 +73,7 @@ def summarize_text(text, detail_level="Concise"):
     max_words = summary_lengths.get(detail_level, 100)
     system_prompt = f"Summarize the following text in up to {max_words} words. Focus on key points and maintain clarity."
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -68,47 +102,21 @@ def extract_keywords(text):
         logging.error(f"Error extracting keywords: {e}")
         return []
 
-# Function to generate illustrations using DALL-E 3
-import json
-
-# Function to generate illustrations using DALL-E 3
-def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
-    """
-    Generates illustrations for a list of keywords using DALL-E 3 via the new OpenAI images/generations API.
-    Returns a list of file paths to the generated images.
-    """
+# Function to generate illustrations using placeholders
+def generate_illustrations_with_placeholders(keywords, style="pencil sketch"):
     illustration_paths = []
 
     for keyword in keywords:
         try:
-            # Construct the descriptive prompt
-            prompt = f"Create a {style} of {keyword}."
-
-            # Generate the image using the images/generations endpoint
-            response = openai.Image.create(
-                prompt=prompt,
-                n=1,
-                size="512x512"  # Set the desired image size
-            )
-
-            # Retrieve the image URL
-            image_url = response["data"][0]["url"]
-
-            # Download the image and save it locally
-            image_path = tempfile.mktemp(suffix=".jpg")
-            image_data = requests.get(image_url).content
-            with open(image_path, "wb") as f:
-                f.write(image_data)
-
-            # Append the local image path to the list
-            illustration_paths.append(image_path)
-
+            output_path = tempfile.mktemp(suffix=".jpg")
+            generate_placeholder_image(keyword, style, output_path)
+            illustration_paths.append(output_path)
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
             continue
 
     return illustration_paths
-    
+
 # Function to generate audio from text using OpenAI
 def generate_audio(script, voice="shimmer"):
     try:
@@ -172,11 +180,11 @@ if uploaded_file:
 
         if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
-            illustrations = generate_illustrations_with_dalle(
+            illustrations = generate_illustrations_with_placeholders(
                 st.session_state.selected_keywords,
-                style="pencil sketch"  # You can change the style here
-        )
-        if illustrations:
-            st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
-        else:
-            st.warning("No illustrations could be generated. Try different keywords or styles.")
+                style="pencil sketch"
+            )
+            if illustrations:
+                st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
+            else:
+                st.warning("No illustrations could be generated. Try different keywords or styles.")
