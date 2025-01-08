@@ -97,12 +97,15 @@ def extract_keywords(text):
         logging.error(f"Error extracting keywords: {e}")
         return []
 
-def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
+def generate_illustrations_with_dalle(keywords, style="cartoon"):
     illustration_paths = []
     for keyword in keywords:
         try:
             # Generate an artistic description prompt for DALL-E
-            prompt = f"Create an artistic illustration of '{keyword}' in a {style} style."
+            prompt = (
+                f"Create an artistic illustration of '{keyword}' in a {style} style. "
+                f"The illustration should not include any letters, words, or text of any kind."
+            )
 
             # Call the OpenAI DALL-E API using the client
             response = client.images.generate(
@@ -178,19 +181,26 @@ if uploaded_file:
                 st.session_state.selected_keywords = list(set(st.session_state.selected_keywords))
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
         if st.session_state.selected_keywords:
-            st.subheader("Generated Illustrations:")
+            st.subheader("Generate Illustrations")
+
+            # Add a dropdown for visual style selection
+            style = st.selectbox(
+                "Select a visual style for the illustrations:",
+                ["cartoon", "anime", "pencil sketch", "realistic", "abstract"]
+            )
+
+            # Generate illustrations based on user-selected style
             illustrations = generate_illustrations_with_dalle(
                 st.session_state.selected_keywords,
-                style="pencil sketch"
-        )
+                style=style
+            )
 
-        if illustrations:  # Ensure illustrations is not empty
-            valid_illustrations = [img for img in illustrations if os.path.exists(img)]
-            if valid_illustrations:
-                st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
+            # Display generated illustrations
+            if illustrations:  # Ensure illustrations is not empty
+                valid_illustrations = [img for img in illustrations if os.path.exists(img)]
+                if valid_illustrations:
+                    st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
+                else:
+                    st.warning("No valid illustrations could be displayed.")
             else:
-                st.warning("No valid illustrations could be displayed.")
-        else:
-            st.warning("Illustrations could not be generated. Ensure your keywords are valid.")
-
-            st.warning("No illustrations could be generated. Ensure your keywords are valid.")
+                st.warning("Illustrations could not be generated. Ensure your keywords are valid.")
