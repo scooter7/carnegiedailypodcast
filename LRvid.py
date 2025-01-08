@@ -146,10 +146,10 @@ if uploaded_file:
         st.subheader("Select Keywords for Illustrations:")
         selected_keywords = []
         for keyword in st.session_state.keywords:
-            if st.checkbox(keyword, key=f"keyword_{keyword}"):
+            if st.checkbox(f"{keyword}", key=f"checkbox_{keyword}"):
                 selected_keywords.append(keyword)
 
-        # Save selected keywords to state
+        # Update session state with selected keywords
         st.session_state.selected_keywords = selected_keywords
 
         # Allow the user to input additional keywords
