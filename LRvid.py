@@ -93,13 +93,27 @@ def extract_keywords(text):
         logging.error(f"Error extracting keywords: {e}")
         return []
 
-def generate_illustrations_with_placeholders(keywords, style="pencil sketch"):
+def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     illustration_paths = []
     for keyword in keywords:
         try:
-            output_path = tempfile.mktemp(suffix=".jpg")
-            generate_placeholder_image(keyword, style, output_path)
-            if os.path.exists(output_path):
+            # Generate an artistic description prompt for DALL-E
+            prompt = f"Create an artistic illustration of '{keyword}' in a {style} style."
+            
+            # Call the OpenAI DALL-E API
+            response = openai.Image.create(
+                prompt=prompt,
+                n=1,  # Number of images to generate
+                size="512x512"  # Set the desired image size
+            )
+            
+            # Save the generated image
+            if response and "data" in response:
+                img_url = response["data"][0]["url"]
+                output_path = tempfile.mktemp(suffix=".png")
+                img_data = requests.get(img_url).content
+                with open(output_path, "wb") as f:
+                    f.write(img_data)
                 illustration_paths.append(output_path)
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
@@ -158,7 +172,7 @@ if uploaded_file:
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
         if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
-            illustrations = generate_illustrations_with_placeholders(
+            illustrations = generate_illustrations_with_dalle(
                 st.session_state.selected_keywords,
                 style="pencil sketch"
         )
