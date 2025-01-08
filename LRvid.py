@@ -142,11 +142,12 @@ if uploaded_file:
             st.session_state.keywords = extract_keywords(summary)
             st.session_state.selected_keywords = []
 
-        # Checkbox list for keyword selection
+        # Display each keyword as an individual checkbox
         st.subheader("Select Keywords for Illustrations:")
         selected_keywords = []
-        for keyword in st.session_state.keywords:
-            if st.checkbox(f"{keyword}", key=f"checkbox_{keyword}"):
+        for i, keyword in enumerate(st.session_state.keywords):
+            is_selected = st.checkbox(keyword, key=f"keyword_{i}")
+            if is_selected:
                 selected_keywords.append(keyword)
 
         # Update session state with selected keywords
