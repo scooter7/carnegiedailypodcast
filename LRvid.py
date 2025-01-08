@@ -42,7 +42,7 @@ def summarize_text(text, detail_level="Concise"):
     max_words = summary_lengths.get(detail_level, 100)
     system_prompt = f"Summarize the following text in up to {max_words} words. Focus on key points and maintain clarity."
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -58,7 +58,7 @@ def summarize_text(text, detail_level="Concise"):
 def extract_keywords(text):
     prompt = "Extract a list of keywords from the following text:"
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt},
