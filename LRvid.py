@@ -108,8 +108,8 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
                 function_call={"name": "generate_image"}  # Explicitly request the function
             )
 
-            # Safely parse the function call arguments
-            function_call_args = json.loads(response.choices[0].message.function_call["arguments"])
+            # Parse the function call arguments
+            function_call_args = json.loads(response.choices[0].message.function_call.arguments)
 
             # Generate the image using the parsed arguments
             image_response = openai.Image.create(
