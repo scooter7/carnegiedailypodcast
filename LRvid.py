@@ -99,18 +99,18 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
         try:
             # Generate an artistic description prompt for DALL-E
             prompt = f"Create an artistic illustration of '{keyword}' in a {style} style."
-
+            
             # Call the OpenAI DALL-E API using the updated syntax
-            response = openai.Image.create(
+            response = client.images.generate(
                 prompt=prompt,
                 n=1,  # Number of images to generate
                 size="512x512"  # Set the desired image size
             )
 
             # Save the generated image
-            img_data = response["data"][0]["url"]
+            img_url = response["data"][0]["url"]
             output_path = tempfile.mktemp(suffix=".png")
-            img_content = requests.get(img_data).content
+            img_content = requests.get(img_url).content
             with open(output_path, "wb") as f:
                 f.write(img_content)
             illustration_paths.append(output_path)
@@ -180,4 +180,3 @@ if uploaded_file:
             st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
         else:
             st.warning("No illustrations could be generated. Ensure your keywords are valid.")
-
