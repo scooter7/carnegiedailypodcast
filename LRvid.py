@@ -129,30 +129,47 @@ st.title("Document-to-Video Generator")
 uploaded_file = st.file_uploader("Upload a document (PDF, Word, txt):", type=["pdf", "docx", "txt"])
 
 if uploaded_file:
+    # Extract text from the uploaded document
     text = extract_text_from_document(uploaded_file)
     if text:
+        # Select the level of summarization
         detail_level = st.selectbox("Select Summary Detail Level:", ["Concise", "Medium", "Comprehensive"])
         summary = summarize_text(text, detail_level)
         st.text_area("Generated Summary:", summary, height=150)
 
-        keywords = extract_keywords(summary)
-        selected_keywords = st.multiselect("Select Keywords for Illustrations:", keywords)
+        # Extract keywords from the summary
+        if "keywords" not in st.session_state:
+            st.session_state.keywords = extract_keywords(summary)
 
-        if selected_keywords:
-            illustrations = generate_illustrations(selected_keywords)
+        # Checkbox list for keyword selection
+        st.subheader("Select Keywords for Illustrations:")
+        selected_keywords = []
+        for keyword in st.session_state.keywords:
+            if st.checkbox(keyword, key=f"keyword_{keyword}"):
+                selected_keywords.append(keyword)
 
+        # Save selected keywords to state
+        st.session_state.selected_keywords = selected_keywords
+
+        # Display the selected keywords and generate illustrations
+        if st.session_state.selected_keywords:
+            st.subheader("Generated Illustrations:")
+            illustrations = generate_illustrations(st.session_state.selected_keywords)
             if illustrations:
-                st.image(illustrations, caption=selected_keywords, use_column_width=True)
+                st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
 
+                # Video settings
                 transition = st.selectbox("Select Video Transition:", ["None", "Fade", "Swipe"])
                 duration_per_image = st.number_input(
                     "Duration per Image (seconds):", min_value=1, max_value=10, value=5
                 )
 
-                script = f"Here are the key highlights: {', '.join(selected_keywords)}. {summary}"
+                # Generate audio script
+                script = f"Here are the key highlights: {', '.join(st.session_state.selected_keywords)}. {summary}"
                 audio_path = generate_audio(script)
 
                 if audio_path:
+                    # Create the video with illustrations and audio
                     video_path = create_video(illustrations, audio_path, transition, duration_per_image)
                     if video_path:
                         st.video(video_path)
