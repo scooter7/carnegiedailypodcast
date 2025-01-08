@@ -56,9 +56,13 @@ def summarize_text(text, detail_level="Concise"):
 
 # Function to extract keywords using OpenAI
 def extract_keywords(text):
-    prompt = "Extract a list of keywords from the following text:"
+    """
+    Extracts keywords from the provided text.
+    Returns a list of keywords.
+    """
+    prompt = "Extract a list of concise, individual keywords (comma-separated) from the following text:"
     try:
-        response = openai.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": prompt},
@@ -66,7 +70,8 @@ def extract_keywords(text):
             ],
         )
         keywords = response.choices[0].message.content.strip()
-        return keywords.split(", ")
+        # Split keywords into a clean list
+        return [kw.strip() for kw in keywords.split(",") if kw.strip()]
     except Exception as e:
         logging.error(f"Error extracting keywords: {e}")
         return []
