@@ -161,9 +161,10 @@ if uploaded_file:
             illustrations = generate_illustrations_with_placeholders(
                 st.session_state.selected_keywords,
                 style="pencil sketch"
-            )
-            valid_illustrations = [img for img in illustrations if os.path.exists(img)]
-            if valid_illustrations:
-                st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
-            else:
-                st.warning("No illustrations could be generated. Ensure your keywords are valid.")
+        )
+        valid_illustrations = [img for img in illustrations if os.path.exists(img)]
+        if valid_illustrations:
+            st.image(valid_illustrations, caption=st.session_state.selected_keywords, use_container_width=True)
+        else:
+            st.warning("No illustrations could be generated. Ensure your keywords are valid.")
+
