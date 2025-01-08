@@ -75,56 +75,35 @@ def generate_illustrations_with_dalle(keywords, style="pencil sketch"):
     Returns a list of file paths to the generated images.
     """
     illustration_paths = []
-    for keyword in keywords:
+    for idx, keyword in enumerate(keywords):
         try:
-            # Construct the prompt
-            prompt = f"Create a {style} of {keyword}."
+            # Create a descriptive prompt
+            prompt = f"{keyword} in {style} style"
+            st.write(f"Generating image for: {prompt}")
 
-            # Generate the function call response
-            response = openai.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {"role": "system", "content": "You are an image generation assistant."},
-                    {"role": "user", "content": prompt}
-                ],
-                functions=[
-                    {
-                        "name": "generate_image",
-                        "description": "Generate an image based on a given description.",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "prompt": {"type": "string", "description": "Text description of the image to generate."},
-                                "size": {"type": "string", "enum": ["256x256", "512x512", "1024x1024"]},
-                            },
-                            "required": ["prompt", "size"]
-                        }
-                    }
-                ],
-                function_call={"name": "generate_image"}
-            )
-
-            # Extract and parse arguments
-            image_args = response.choices[0].message["function_call"]["arguments"]
-            image_args = eval(image_args)  # Convert string representation to dict
-
-            # Generate the image
-            image_response = openai.Image.create(
-                prompt=image_args["prompt"],
-                size=image_args["size"],
+            # Generate the image with DALL-E 3
+            response = openai.Image.create(
+                model="dall-e-3",
+                prompt=prompt,
+                size="1024x1024",
                 n=1
             )
-            image_url = image_response["data"][0]["url"]
 
-            # Download and save the image
+            # Get the image URL from the response
+            image_url = response["data"][0]["url"]
+
+            # Download the image and save it locally
             image_path = tempfile.mktemp(suffix=".jpg")
+            image_data = requests.get(image_url).content
             with open(image_path, "wb") as f:
-                f.write(requests.get(image_url).content)
+                f.write(image_data)
 
             illustration_paths.append(image_path)
 
         except Exception as e:
             logging.error(f"Error generating illustration for keyword '{keyword}': {e}")
+            st.warning(f"Failed to generate image for '{keyword}'. Skipping.")
+
     return illustration_paths
 
 # Function to generate audio from text using OpenAI
@@ -188,7 +167,7 @@ if uploaded_file:
 
             st.success(f"Selected Keywords: {', '.join(st.session_state.selected_keywords)}")
 
-        if st.session_state.selected_keywords:
+       if st.session_state.selected_keywords:
             st.subheader("Generated Illustrations:")
             illustrations = generate_illustrations_with_dalle(
                 st.session_state.selected_keywords,
@@ -196,3 +175,5 @@ if uploaded_file:
         )
         if illustrations:
             st.image(illustrations, caption=st.session_state.selected_keywords, use_column_width=True)
+        else:
+            st.warning("No illustrations could be generated. Try different keywords or styles.")
