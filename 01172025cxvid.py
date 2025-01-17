@@ -16,14 +16,14 @@ INTRO_TEXT = (
     "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
     "to help you find great schools to apply to! Let’s get started!"
 )
-INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
+INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg?raw=true"
 CONCLUSION_TEXT = (
     "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
     "Just click the green 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
     "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
     "Until next time, happy college hunting!"
 )
-CONCLUSION_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
+CONCLUSION_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg?raw=true"
 
 # Initialize session state
 if "master_script" not in st.session_state:
