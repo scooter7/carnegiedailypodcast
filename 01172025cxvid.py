@@ -10,6 +10,19 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
+# Function to download an image from a URL
+def download_image_from_url(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        return img
+    except Exception as e:
+        logging.error(f"Error downloading image from {url}: {e}")
+        return None
+        
 # Constants
 WORDS_PER_MINUTE = 150
 INTRO_TEXT = (
