@@ -135,7 +135,7 @@ if st.button("Create Video"):
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
         intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(5))
+        video_clips.append(ImageClip(intro_path).set_duration(5).set_fps(24))  # Set FPS explicitly
 
     # Add user-defined middle sections
     for i, content in enumerate(st.session_state.sections):
@@ -146,20 +146,20 @@ if st.button("Create Video"):
                 img_path = tempfile.mktemp(suffix=".png")
                 image.save(img_path, "PNG")
                 section_duration = video_duration / (st.session_state.num_sections + 2)  # Include intro/outro
-                video_clips.append(ImageClip(img_path).set_duration(section_duration))
+                video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))  # Set FPS
 
     # Add conclusion section
     outro_img = download_image_from_url(CONCLUSION_IMAGE_URL)
     if outro_img:
         outro_path = tempfile.mktemp(suffix=".png")
         outro_img.save(outro_path, "PNG")
-        video_clips.append(ImageClip(outro_path).set_duration(5))
+        video_clips.append(ImageClip(outro_path).set_duration(5).set_fps(24))  # Set FPS explicitly
 
     # Combine video clips
     if video_clips:
         final_video_path = tempfile.mktemp(suffix=".mp4")
         combined_clip = concatenate_videoclips(video_clips, method="compose")
-        combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac")
+        combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)  # Add FPS here
         
         # Display and download
         st.video(final_video_path)
