@@ -13,16 +13,6 @@ logging.basicConfig(level=logging.INFO)
 # Constants
 WORDS_PER_MINUTE = 150
 INTRO_OUTRO_IMAGE = "https://github.com/scooter7/carnegiedailypodcast/blob/ffe1af9fb3bb7e853bdd4e285d0b699ceb452208/cx.jpg"
-INTRO_SCRIPT = (
-    "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
-    "to help you find great schools to apply to! Today we’re highlighting some amazing schools. Let’s get started!"
-)
-OUTRO_SCRIPT = (
-    "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
-    "Click the green 'Yes, connect me!' buttons to receive more information. "
-    "You can find links to these schools in the description below. Follow us on social media @CollegeXpress. "
-    "Until next time, happy college hunting!"
-)
 
 # Initialize session state
 if "master_script" not in st.session_state:
@@ -45,25 +35,37 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to generate a dynamic summary script
-def generate_dynamic_summary(all_text, desired_duration):
+# Function to dynamically generate a summary script based on duration
+def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
+    opening_message = (
+        f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
+        f"Today we’re highlighting {school_name}. Let’s get started!"
+    )
+    closing_message = (
+        "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
+        "Just click the green 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
+        "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
+        "Until next time, happy college hunting!"
+    )
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
     system_prompt = (
-        f"As a show host, summarize the text to fit within {max_words} words. "
-        f"Be enthusiastic, engaging, and include key details such as accolades and testimonials."
+        f"As a show host, summarize the text narratively to fit within {max_words} words. Include key details like location, accolades, and testimonials. "
+        f"Speak naturally in terms of pace, and be enthusiastic in your tone."
     )
     try:
         response = openai.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": all_text},
+                {"role": "user", "content": f"Summarize this text: {all_text}"},
             ],
         )
-        return response.choices[0].message.content.strip()
+        dynamic_summary = response.choices[0].message.content.strip()
+        full_script = f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}"
+        return full_script
     except Exception as e:
-        logging.error(f"Error generating summary: {e}")
-        return "[Error generating summary]"
+        logging.error(f"Error generating dynamic summary: {e}")
+        return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
 # Function to download an image from a URL
 def download_image_from_url(url):
@@ -89,8 +91,7 @@ if st.button("Generate Master Script"):
     for url in urls:
         combined_text += scrape_text_from_url(url)
     if combined_text:
-        generated_summary = generate_dynamic_summary(combined_text, video_duration)
-        st.session_state.master_script = f"{INTRO_SCRIPT}\n\n{generated_summary}\n\n{OUTRO_SCRIPT}"
+        st.session_state.master_script = generate_dynamic_summary_with_duration(combined_text, video_duration)
 
 # Editable Master Script
 if st.session_state.master_script:
