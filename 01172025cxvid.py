@@ -3,26 +3,13 @@ from bs4 import BeautifulSoup
 import requests
 import openai
 import tempfile
-from moviepy.editor import ImageClip, concatenate_videoclips
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip
 from PIL import Image
 from io import BytesIO
 import logging
 
 logging.basicConfig(level=logging.INFO)
 
-# Function to download an image from a URL
-def download_image_from_url(url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content))
-        if img.mode != "RGBA":
-            img = img.convert("RGBA")
-        return img
-    except Exception as e:
-        logging.error(f"Error downloading image from {url}: {e}")
-        return None
-        
 # Constants
 WORDS_PER_MINUTE = 150
 INTRO_TEXT = (
@@ -78,6 +65,31 @@ def generate_dynamic_summary(all_text, desired_duration):
     except Exception as e:
         logging.error(f"Error generating summary: {e}")
         return "[Error generating summary]"
+
+# Function to download an image from a URL
+def download_image_from_url(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        return img
+    except Exception as e:
+        logging.error(f"Error downloading image from {url}: {e}")
+        return None
+
+# Function to generate audio from a script using OpenAI
+def generate_audio_from_script(script, voice="shimmer"):
+    try:
+        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
+        audio_path = tempfile.mktemp(suffix=".mp3")
+        with open(audio_path, "wb") as f:
+            f.write(response.content)
+        return audio_path
+    except Exception as e:
+        logging.error(f"Error generating audio: {e}")
+        return None
 
 # UI: Input URLs
 st.title("Custom Video Script and Section Creator")
@@ -135,7 +147,7 @@ if st.button("Create Video"):
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
         intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(5).set_fps(24))  # Set FPS explicitly
+        video_clips.append(ImageClip(intro_path).set_duration(5).set_fps(24))
 
     # Add user-defined middle sections
     for i, content in enumerate(st.session_state.sections):
@@ -146,20 +158,26 @@ if st.button("Create Video"):
                 img_path = tempfile.mktemp(suffix=".png")
                 image.save(img_path, "PNG")
                 section_duration = video_duration / (st.session_state.num_sections + 2)  # Include intro/outro
-                video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))  # Set FPS
+                video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
 
     # Add conclusion section
     outro_img = download_image_from_url(CONCLUSION_IMAGE_URL)
     if outro_img:
         outro_path = tempfile.mktemp(suffix=".png")
         outro_img.save(outro_path, "PNG")
-        video_clips.append(ImageClip(outro_path).set_duration(5).set_fps(24))  # Set FPS explicitly
+        video_clips.append(ImageClip(outro_path).set_duration(5).set_fps(24))
 
-    # Combine video clips
+    # Generate script audio
+    audio_path = generate_audio_from_script(st.session_state.master_script)
+    if not audio_path:
+        st.error("Failed to generate audio for the script.")
+        st.stop()
+
+    # Combine video clips and audio
     if video_clips:
         final_video_path = tempfile.mktemp(suffix=".mp4")
-        combined_clip = concatenate_videoclips(video_clips, method="compose")
-        combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)  # Add FPS here
+        combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(AudioFileClip(audio_path))
+        combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
         
         # Display and download
         st.video(final_video_path)
