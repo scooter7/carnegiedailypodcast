@@ -46,6 +46,26 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
+# Function to dynamically generate a summary script based on duration
+def generate_dynamic_summary(all_text, desired_duration):
+    max_words = (desired_duration // 60) * WORDS_PER_MINUTE
+    system_prompt = (
+        f"As a show host, summarize the text to fit within {max_words} words. "
+        f"Be enthusiastic, engaging, and include key details such as accolades and testimonials."
+    )
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": all_text},
+            ],
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        logging.error(f"Error generating summary: {e}")
+        return "[Error generating summary]"
+
 # Function to generate audio from script
 def generate_audio_from_script(script, voice="shimmer"):
     try:
