@@ -27,17 +27,16 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to download an image from a URL
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        if img.mode == "RGBA":
-            img = img.convert("RGB")  # Convert RGBA to RGB
+        if img.mode != "RGB":  # Ensure the image is in RGB mode
+            img = img.convert("RGB")
         return img
     except Exception as e:
-        logging.error(f"Error downloading image from {url}: {e}")
+        logging.error(f"Error downloading or processing image from {url}: {e}")
         return None
 
 # Function to dynamically generate a summary script based on duration
