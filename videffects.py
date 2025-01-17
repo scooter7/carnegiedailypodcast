@@ -32,7 +32,7 @@ def download_image_from_url(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        # Convert to RGBA if needed
+        # Ensure all images are in RGBA mode
         if img.mode != "RGBA":
             img = img.convert("RGBA")
         return img
@@ -44,15 +44,12 @@ for img_url in images:
     image = download_image_from_url(img_url)
     if image:
         st.image(image, caption=f"Processing {img_url}")
-        temp_image_path = tempfile.mktemp(suffix=".png")  # Use PNG consistently
+        temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
         try:
-            # Convert to RGBA mode and save as PNG
-            if image.mode != "RGBA":
-                image = image.convert("RGBA")
-            image.save(temp_image_path, "PNG")  # Save as PNG
-            
+            # Save the image as PNG
+            image.save(temp_image_path, "PNG")
             logging.info(f"Image saved as PNG at {temp_image_path}")
-            
+
             # Create a video clip with the saved image
             video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
             if video_clip:
@@ -137,7 +134,7 @@ def apply_image_effect(image_path, effect):
             return image_path
 
         # Save processed image to a new path
-        output_path = tempfile.mktemp(suffix=".jpg")
+        output_path = tempfile.mktemp(suffix=".png")  # Always use PNG
         with open(output_path, "wb") as f:
             f.write(requests.get(response).content)
         return output_path
