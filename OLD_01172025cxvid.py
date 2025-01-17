@@ -139,15 +139,29 @@ if st.session_state.master_script:
         )
 
 # Generate Video
+# Generate Video
 if st.button("Create Video"):
     video_clips = []
+
+    # Generate script audio
+    audio_path = generate_audio_from_script(st.session_state.master_script)
+    if not audio_path:
+        st.error("Failed to generate audio for the script.")
+        st.stop()
+
+    audio = AudioFileClip(audio_path)
+    total_audio_duration = audio.duration
+
+    # Calculate durations for each section
+    total_sections = st.session_state.num_sections + 2  # Include intro and outro
+    section_duration = total_audio_duration / total_sections
 
     # Add intro section
     intro_img = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
         intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(5).set_fps(24))
+        video_clips.append(ImageClip(intro_path).set_duration(section_duration).set_fps(24))
 
     # Add user-defined middle sections
     for i, content in enumerate(st.session_state.sections):
@@ -157,7 +171,6 @@ if st.button("Create Video"):
             if image:
                 img_path = tempfile.mktemp(suffix=".png")
                 image.save(img_path, "PNG")
-                section_duration = video_duration / (st.session_state.num_sections + 2)  # Include intro/outro
                 video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
 
     # Add conclusion section
@@ -165,20 +178,14 @@ if st.button("Create Video"):
     if outro_img:
         outro_path = tempfile.mktemp(suffix=".png")
         outro_img.save(outro_path, "PNG")
-        video_clips.append(ImageClip(outro_path).set_duration(5).set_fps(24))
-
-    # Generate script audio
-    audio_path = generate_audio_from_script(st.session_state.master_script)
-    if not audio_path:
-        st.error("Failed to generate audio for the script.")
-        st.stop()
+        video_clips.append(ImageClip(outro_path).set_duration(section_duration).set_fps(24))
 
     # Combine video clips and audio
     if video_clips:
         final_video_path = tempfile.mktemp(suffix=".mp4")
-        combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(AudioFileClip(audio_path))
+        combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
         combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
-        
+
         # Display and download
         st.video(final_video_path)
         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
