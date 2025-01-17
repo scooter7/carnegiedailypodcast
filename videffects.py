@@ -32,31 +32,31 @@ def download_image_from_url(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        # Ensure all images are in RGBA mode
-        if img.mode != "RGBA":
-            img = img.convert("RGBA")
+
+        # Ensure the image is compatible with JPEG or PNG saving
+        if img.mode in ("RGBA", "P"):  # Convert RGBA or palette images
+            img = img.convert("RGB")
+
         return img
     except Exception as e:
-        logging.error(f"Error downloading or processing image from {url}: {e}")
+        logging.error(f"Error downloading image from {url}: {e}")
         return None
 
 for img_url in images:
     image = download_image_from_url(img_url)
     if image:
         st.image(image, caption=f"Processing {img_url}")
-        temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
+        temp_image_path = tempfile.mktemp(suffix=".jpg")  # Default to JPEG
         try:
-            # Convert and save as PNG
-            if image.mode != "RGBA":
-                image = image.convert("RGBA")
-            image.save(temp_image_path, "PNG")
-            logging.info(f"Image saved as PNG at {temp_image_path}")
+            # Convert and save to ensure compatibility
+            if image.mode in ("RGBA", "P"):
+                image = image.convert("RGB")
+            image.save(temp_image_path, format="JPEG")
 
-            # Create a video clip with the saved image
+            # Process the image for video clip creation
             video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
             if video_clip:
                 video_clips.append(video_clip)
-                logging.info(f"Video clip created successfully for {img_url}")
         except Exception as e:
             logging.error(f"Error saving or processing image {img_url}: {e}")
     else:
@@ -153,18 +153,28 @@ def apply_image_effect(image_path, effect):
 # Function to create a video clip with optional effects
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
-        processed_image_path = apply_image_effect(image_path, effect)
+        img = cv2.imread(image_path)
+        if img is None:
+            raise ValueError("Image not found or invalid.")
+        
+        # Apply optional effects
+        processed_img = apply_image_effect(img, effect)
+        
+        # Handle saving as JPEG or PNG based on requirements
+        output_path = tempfile.mktemp(suffix=".jpg")  # You can change to .png if needed
+        is_png = output_path.endswith(".png")
 
-        # Validate the image mode and convert if necessary
-        image = Image.open(processed_image_path)
-        if image.mode != "RGBA":
-            image = image.convert("RGBA")
-        temp_path = tempfile.mktemp(suffix=".png")
-        image.save(temp_path, "PNG")  # Save as PNG for compatibility
+        # Convert the processed image to the appropriate mode for saving
+        if is_png:
+            cv2.imwrite(output_path, processed_img)  # PNG supports transparency
+        else:
+            # Ensure image is in BGR (no alpha) for JPEG
+            processed_img = cv2.cvtColor(processed_img, cv2.COLOR_BGRA2BGR)
+            cv2.imwrite(output_path, processed_img)
 
-        return ImageClip(temp_path).set_duration(duration).set_fps(fps)
+        return ImageClip(output_path).set_duration(duration).set_fps(fps)
     except Exception as e:
-        logging.error(f"Error creating video clip: {e}")
+        logging.error(f"Error processing image for video clip: {e}")
         return None
 
 # Function to combine video clips with transitions and synchronize with audio
