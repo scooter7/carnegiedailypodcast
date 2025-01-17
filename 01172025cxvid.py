@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 WORDS_PER_MINUTE = 150
 INTRO_TEXT = (
     "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
-    "to help you find great schools to apply to! Today we’re highlighting the highlighted schools. Let’s get started!"
+    "to help you find great schools to apply to! Let’s get started!"
 )
 INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
 CONCLUSION_TEXT = (
