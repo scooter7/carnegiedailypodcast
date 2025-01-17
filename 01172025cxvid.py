@@ -26,6 +26,8 @@ CONCLUSION_TEXT = (
 CONCLUSION_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/6d77d1376c52b53ccbae49475909a69085a3307f/cx.jpg"
 
 # Initialize session state
+if "master_script" not in st.session_state:
+    st.session_state.master_script = ""
 if "sections" not in st.session_state:
     st.session_state.sections = []
 if "section_images" not in st.session_state:
@@ -64,44 +66,52 @@ def generate_dynamic_summary(all_text, desired_duration):
         logging.error(f"Error generating summary: {e}")
         return "[Error generating summary]"
 
-# Function to download an image from a URL
-def download_image_from_url(url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content))
-        if img.mode != "RGBA":
-            img = img.convert("RGBA")
-        return img
-    except Exception as e:
-        logging.error(f"Error downloading image from {url}: {e}")
-        return None
-
 # UI: Input URLs
 st.title("Custom Video Script and Section Creator")
 urls = st.text_area("Enter URLs (one per line):", height=100).splitlines()
 video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
-# Generate User-Defined Sections
-st.subheader("Section Configuration")
-st.session_state.num_sections = st.number_input(
-    "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
-)
+# Generate Master Script
+if st.button("Generate Master Script"):
+    combined_text = ""
+    for url in urls:
+        combined_text += scrape_text_from_url(url)
+    if combined_text:
+        dynamic_summary = generate_dynamic_summary(combined_text, video_duration)
+        st.session_state.master_script = f"{INTRO_TEXT}\n\n{dynamic_summary}\n\n{CONCLUSION_TEXT}"
 
-# Create sections dynamically based on user input
-if len(st.session_state.sections) != st.session_state.num_sections:
-    st.session_state.sections = ["" for _ in range(st.session_state.num_sections)]
-    st.session_state.section_images = {i: "" for i in range(st.session_state.num_sections)}
+# Editable Master Script
+if st.session_state.master_script:
+    st.subheader("Master Script")
+    st.session_state.master_script = st.text_area(
+        "Generated Master Script (editable):", st.session_state.master_script, height=300
+    )
 
-# User edits content and assigns images for middle sections
-st.subheader("Edit Middle Sections and Assign Images")
-for i in range(st.session_state.num_sections):
-    st.session_state.sections[i] = st.text_area(
-        f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150
+    # User decides the number of middle sections
+    st.subheader("Section Configuration")
+    st.session_state.num_sections = st.number_input(
+        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
     )
-    st.session_state.section_images[i] = st.text_input(
-        f"Image URL for Section {i + 1}:", value=st.session_state.section_images.get(i, "")
-    )
+
+    # Create sections dynamically based on user input
+    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
+    section_splits = middle_content.split("\n\n") if middle_content else []
+
+    if len(st.session_state.sections) != st.session_state.num_sections:
+        st.session_state.sections = section_splits[:st.session_state.num_sections] + [
+            "" for _ in range(max(0, st.session_state.num_sections - len(section_splits)))
+        ]
+        st.session_state.section_images = {i: "" for i in range(st.session_state.num_sections)}
+
+    # User edits content and assigns images for middle sections
+    st.subheader("Edit Middle Sections and Assign Images")
+    for i in range(st.session_state.num_sections):
+        st.session_state.sections[i] = st.text_area(
+            f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150
+        )
+        st.session_state.section_images[i] = st.text_input(
+            f"Image URL for Section {i + 1}:", value=st.session_state.section_images.get(i, "")
+        )
 
 # Generate Video
 if st.button("Create Video"):
@@ -141,4 +151,8 @@ if st.button("Create Video"):
         # Display and download
         st.video(final_video_path)
         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-        st.download_button("Download Script", f"{INTRO_TEXT}\n\n" + "\n\n".join(st.session_state.sections) + f"\n\n{CONCLUSION_TEXT}", "script.txt")
+        st.download_button(
+            "Download Script",
+            f"{INTRO_TEXT}\n\n" + "\n\n".join(st.session_state.sections) + f"\n\n{CONCLUSION_TEXT}",
+            "script.txt"
+        )
