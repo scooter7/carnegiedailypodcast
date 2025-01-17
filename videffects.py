@@ -46,7 +46,9 @@ for img_url in images:
         st.image(image, caption=f"Processing {img_url}")
         temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
         try:
-            # Save the image as PNG
+            # Convert and save as PNG
+            if image.mode != "RGBA":
+                image = image.convert("RGBA")
             image.save(temp_image_path, "PNG")
             logging.info(f"Image saved as PNG at {temp_image_path}")
 
@@ -137,6 +139,12 @@ def apply_image_effect(image_path, effect):
         output_path = tempfile.mktemp(suffix=".png")  # Always use PNG
         with open(output_path, "wb") as f:
             f.write(requests.get(response).content)
+
+        # Ensure the processed image is in RGBA mode if needed
+        processed_image = Image.open(output_path)
+        if processed_image.mode != "RGBA":
+            processed_image = processed_image.convert("RGBA")
+        processed_image.save(output_path, "PNG")  # Save as PNG
         return output_path
     except Exception as e:
         logging.error(f"Error applying effect '{effect}': {e}")
@@ -146,7 +154,15 @@ def apply_image_effect(image_path, effect):
 def create_video_clip_with_effect(image_path, effect, duration=5, fps=24):
     try:
         processed_image_path = apply_image_effect(image_path, effect)
-        return ImageClip(processed_image_path).set_duration(duration).set_fps(fps)
+
+        # Validate the image mode and convert if necessary
+        image = Image.open(processed_image_path)
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        temp_path = tempfile.mktemp(suffix=".png")
+        image.save(temp_path, "PNG")  # Save as PNG for compatibility
+
+        return ImageClip(temp_path).set_duration(duration).set_fps(fps)
     except Exception as e:
         logging.error(f"Error creating video clip: {e}")
         return None
