@@ -33,6 +33,8 @@ def download_image_from_url(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
+        if img.mode == "RGBA":
+            img = img.convert("RGB")  # Convert RGBA to RGB
         return img
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
