@@ -7,13 +7,22 @@ from moviepy.editor import ImageClip, concatenate_videoclips
 from PIL import Image
 from io import BytesIO
 import logging
-import os
 
 logging.basicConfig(level=logging.INFO)
 
 # Constants
 WORDS_PER_MINUTE = 150
 INTRO_OUTRO_IMAGE = "https://github.com/scooter7/carnegiedailypodcast/blob/ffe1af9fb3bb7e853bdd4e285d0b699ceb452208/cx.jpg"
+INTRO_SCRIPT = (
+    "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
+    "to help you find great schools to apply to! Today we’re highlighting some amazing schools. Let’s get started!"
+)
+OUTRO_SCRIPT = (
+    "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
+    "Click the green 'Yes, connect me!' buttons to receive more information. "
+    "You can find links to these schools in the description below. Follow us on social media @CollegeXpress. "
+    "Until next time, happy college hunting!"
+)
 
 # Initialize session state
 if "master_script" not in st.session_state:
@@ -80,12 +89,15 @@ if st.button("Generate Master Script"):
     for url in urls:
         combined_text += scrape_text_from_url(url)
     if combined_text:
-        st.session_state.master_script = generate_dynamic_summary(combined_text, video_duration)
+        generated_summary = generate_dynamic_summary(combined_text, video_duration)
+        st.session_state.master_script = f"{INTRO_SCRIPT}\n\n{generated_summary}\n\n{OUTRO_SCRIPT}"
 
-# Display Master Script
+# Editable Master Script
 if st.session_state.master_script:
     st.subheader("Master Script")
-    st.text_area("Generated Master Script (read-only):", st.session_state.master_script, height=300, disabled=True)
+    st.session_state.master_script = st.text_area(
+        "Generated Master Script (editable):", st.session_state.master_script, height=300
+    )
 
     # User decides the number of sections
     st.subheader("Section Configuration")
