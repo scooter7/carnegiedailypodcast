@@ -32,12 +32,33 @@ def download_image_from_url(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         img = Image.open(BytesIO(response.content))
-        if img.mode != "RGB":  # Ensure the image is in RGB mode
-            img = img.convert("RGB")
+        # Convert to RGBA if needed
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
         return img
     except Exception as e:
         logging.error(f"Error downloading or processing image from {url}: {e}")
         return None
+
+for img_url in images:
+    image = download_image_from_url(img_url)
+    if image:
+        st.image(image, caption=f"Processing {img_url}")
+        temp_image_path = tempfile.mktemp(suffix=".png")  # Ensure PNG extension
+        try:
+            # Save the image as PNG
+            image.save(temp_image_path, "PNG")
+            logging.info(f"Image saved as PNG at {temp_image_path}")
+            
+            # Create a video clip with the saved image
+            video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+            if video_clip:
+                video_clips.append(video_clip)
+                logging.info(f"Video clip created successfully for {img_url}")
+        except Exception as e:
+            logging.error(f"Error saving or processing image {img_url}: {e}")
+    else:
+        logging.warning(f"Failed to download or process image from {img_url}")
 
 # Function to dynamically generate a summary script based on duration
 def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
