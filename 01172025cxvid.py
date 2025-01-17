@@ -9,6 +9,7 @@ from PIL import Image
 from io import BytesIO
 import logging
 import os
+import math
 
 logging.basicConfig(level=logging.INFO)
 
@@ -22,7 +23,7 @@ if "urls" not in st.session_state:
 if "script" not in st.session_state:
     st.session_state.script = ""
 if "num_sections" not in st.session_state:
-    st.session_state.num_sections = 3
+    st.session_state.num_sections = 0  # Automatically determine initially
 if "section_images" not in st.session_state:
     st.session_state.section_images = {}
 
@@ -51,7 +52,7 @@ def download_image_from_url(url):
         return None
 
 # Function to generate a summary script
-def generate_dynamic_summary_with_duration(all_text, desired_duration, num_sections, school_name="the highlighted schools"):
+def generate_dynamic_summary_with_duration(all_text, desired_duration, num_sections=None, school_name="the highlighted schools"):
     opening_message = (
         f"Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country to help you find great schools to apply to! "
         f"Today we’re highlighting {school_name}. Let’s get started!"
@@ -63,8 +64,9 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, num_secti
         "Until next time, happy college hunting!"
     )
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
+    calculated_sections = num_sections if num_sections else math.ceil(max_words / 100)  # Auto-determine sections
     system_prompt = (
-        f"As a show host, summarize the text narratively to fit within {max_words} words and split it into {num_sections} sections. "
+        f"As a show host, summarize the text narratively to fit within {max_words} words and split it into {calculated_sections} sections. "
         f"Include key details like location, accolades, and testimonials. Speak naturally in terms of pace, and be enthusiastic in your tone."
     )
     try:
@@ -76,10 +78,10 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, num_secti
             ],
         )
         dynamic_summary = response.choices[0].message.content.strip()
-        return f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}"
+        return f"{opening_message}\n\n{dynamic_summary}\n\n{closing_message}", calculated_sections
     except Exception as e:
         logging.error(f"Error generating dynamic summary: {e}")
-        return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
+        return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}", calculated_sections
 
 # Function to create a video clip
 def create_video_clip_with_effect(image_path, duration=5, fps=24):
@@ -94,9 +96,8 @@ st.title("Custom Video and Script Generator with Image Assignment")
 urls = st.text_area("Enter URLs (one per line):", value="\n".join(st.session_state.urls), height=100)
 st.session_state.urls = urls.splitlines()
 
-# UI: Define video duration and number of sections
+# UI: Define video duration
 video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
-st.session_state.num_sections = st.number_input("Number of Sections for Script:", min_value=1, step=1, value=st.session_state.num_sections)
 
 # Generate Script
 if st.button("Generate Script"):
@@ -105,19 +106,27 @@ if st.button("Generate Script"):
         combined_text += scrape_text_from_url(url)
 
     if combined_text:
-        st.session_state.script = generate_dynamic_summary_with_duration(
-            combined_text, video_duration, st.session_state.num_sections
+        script, suggested_sections = generate_dynamic_summary_with_duration(
+            combined_text, video_duration
         )
+        st.session_state.script = script
+        st.session_state.num_sections = suggested_sections
 
 # Display Script and Allow Modifications
 if st.session_state.script:
     st.subheader("Generated Script")
     st.session_state.script = st.text_area("Edit Script Below:", st.session_state.script, height=300)
 
+    # Allow user to redefine the number of sections
+    st.subheader("Adjust Number of Sections")
+    st.session_state.num_sections = st.number_input(
+        "Number of Sections:", min_value=1, step=1, value=st.session_state.num_sections
+    )
+
 # Image Assignment for Sections
 if st.session_state.script:
     st.subheader("Assign Images to Script Sections")
-    sections = st.session_state.script.split("\n\n")
+    sections = st.session_state.script.split("\n\n")[: st.session_state.num_sections]
     st.session_state.section_images = {
         i: st.text_input(f"Image URL for Section {i + 1}:", st.session_state.section_images.get(i, ""))
         for i in range(len(sections))
@@ -141,7 +150,7 @@ if st.button("Create Video"):
             if image:
                 image_path = tempfile.mktemp(suffix=".png")
                 image.save(image_path, "PNG")
-                video_clips.append(create_video_clip_with_effect(image_path, duration=video_duration / len(sections)))
+                video_clips.append(create_video_clip_with_effect(image_path, duration=video_duration / st.session_state.num_sections))
 
     # Add outro image
     outro_img = download_image_from_url(INTRO_OUTRO_IMAGE)
