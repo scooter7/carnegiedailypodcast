@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import requests
 import openai
 import tempfile
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, CompositeVideoClip
+from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip
 from PIL import Image
 from io import BytesIO
 import logging
@@ -16,14 +16,14 @@ INTRO_TEXT = (
     "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
     "to help you find great schools to apply to! Today we’re highlighting the highlighted schools. Let’s get started!"
 )
-INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/6d77d1376c52b53ccbae49475909a69085a3307f/cx.jpg"
+INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
 CONCLUSION_TEXT = (
     "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
     "Just click the green 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
     "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
     "Until next time, happy college hunting!"
 )
-CONCLUSION_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/6d77d1376c52b53ccbae49475909a69085a3307f/cx.jpg"
+CONCLUSION_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg"
 
 # Initialize session state
 if "master_script" not in st.session_state:
@@ -46,25 +46,17 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to dynamically generate a summary script based on duration
-def generate_dynamic_summary(all_text, desired_duration):
-    max_words = (desired_duration // 60) * WORDS_PER_MINUTE
-    system_prompt = (
-        f"As a show host, summarize the text to fit within {max_words} words. "
-        f"Be enthusiastic, engaging, and include key details such as accolades and testimonials."
-    )
+# Function to generate audio from script
+def generate_audio_from_script(script, voice="shimmer"):
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": all_text},
-            ],
-        )
-        return response.choices[0].message.content.strip()
+        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
+        audio_path = tempfile.mktemp(suffix=".mp3")
+        with open(audio_path, "wb") as f:
+            f.write(response.content)
+        return audio_path
     except Exception as e:
-        logging.error(f"Error generating summary: {e}")
-        return "[Error generating summary]"
+        logging.error(f"Error generating audio: {e}")
+        return None
 
 # Function to download an image from a URL
 def download_image_from_url(url):
@@ -77,18 +69,6 @@ def download_image_from_url(url):
         return img
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
-        return None
-
-# Function to generate audio from a script using OpenAI
-def generate_audio_from_script(script, voice="shimmer"):
-    try:
-        response = openai.audio.speech.create(model="tts-1", voice=voice, input=script)
-        audio_path = tempfile.mktemp(suffix=".mp3")
-        with open(audio_path, "wb") as f:
-            f.write(response.content)
-        return audio_path
-    except Exception as e:
-        logging.error(f"Error generating audio: {e}")
         return None
 
 # UI: Input URLs
