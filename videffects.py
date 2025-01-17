@@ -44,10 +44,13 @@ for img_url in images:
     image = download_image_from_url(img_url)
     if image:
         st.image(image, caption=f"Processing {img_url}")
-        temp_image_path = tempfile.mktemp(suffix=".png")  # Ensure PNG extension
+        temp_image_path = tempfile.mktemp(suffix=".png")  # Use PNG consistently
         try:
-            # Save the image as PNG
-            image.save(temp_image_path, "PNG")
+            # Convert to RGBA mode and save as PNG
+            if image.mode != "RGBA":
+                image = image.convert("RGBA")
+            image.save(temp_image_path, "PNG")  # Save as PNG
+            
             logging.info(f"Image saved as PNG at {temp_image_path}")
             
             # Create a video clip with the saved image
@@ -266,11 +269,17 @@ if st.button("Generate Video"):
                     image = download_image_from_url(img_url)
                     if image:
                         st.image(image, caption=f"Processing {img_url}")
-                        temp_image_path = tempfile.mktemp(suffix=".jpg")
-                        image.save(temp_image_path)
+                        temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
+                        try:
+                        # Convert and save as PNG
+                        if image.mode != "RGBA":
+                            image = image.convert("RGBA")
+                        image.save(temp_image_path, "PNG")
                         video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
                         if video_clip:
                             video_clips.append(video_clip)
+                        except Exception as e:
+                            logging.error(f"Error processing image {img_url}: {e}")
 
             if video_clips:
                 final_video_path = tempfile.mktemp(suffix=".mp4")
