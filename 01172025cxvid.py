@@ -71,6 +71,57 @@ def generate_dynamic_summary_with_duration(all_text, desired_duration, school_na
         logging.error(f"Error generating dynamic summary: {e}")
         return f"{opening_message}\n\n[Error generating dynamic summary]\n\n{closing_message}"
 
+# Function to create a video clip with optional effects
+def create_video_clip_with_effect(image_path, duration=5, fps=24):
+    try:
+        return ImageClip(image_path).set_duration(duration).set_fps(fps)
+    except Exception as e:
+        logging.error(f"Error creating video clip: {e}")
+        return None
+
+# Function to combine video clips with intro/outro and synchronize with audio
+def create_final_video_with_audio_sync(video_clips, script_audio_path, output_path, fps=24):
+    try:
+        if not video_clips:
+            raise ValueError("No video clips provided for final video creation.")
+
+        # Load audio to determine total duration
+        if script_audio_path:
+            audio = AudioFileClip(script_audio_path)
+            total_audio_duration = audio.duration
+        else:
+            raise ValueError("Audio file is required to create a synchronized video.")
+
+        # Repeat and trim video clips to match total duration
+        repeated_clips = []
+        current_duration = 0
+        while current_duration < total_audio_duration:
+            for clip in video_clips:
+                if current_duration + clip.duration > total_audio_duration:
+                    # Trim the last clip to match the remaining duration
+                    clip = clip.subclip(0, total_audio_duration - current_duration)
+                    repeated_clips.append(clip)
+                    current_duration = total_audio_duration
+                    break
+                repeated_clips.append(clip)
+                current_duration += clip.duration
+
+        # Concatenate all clips
+        combined_clip = concatenate_videoclips(repeated_clips, method="compose")
+
+        # Add audio to the video
+        combined_clip = combined_clip.set_audio(audio)
+
+        # Ensure the final video length matches the audio duration
+        final_clip = combined_clip.subclip(0, total_audio_duration)
+
+        # Write the final video file
+        final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=fps)
+        return output_path
+    except Exception as e:
+        logging.error(f"Error generating final video: {e}")
+        return None
+
 # Streamlit UI
 st.title("Custom Video and Script Generator with Image Assignment")
 
@@ -113,7 +164,7 @@ if st.button("Generate Script"):
                     if image:
                         image_path = tempfile.mktemp(suffix=".png")
                         image.save(image_path, "PNG")
-                        video_clips.append(ImageClip(image_path).set_duration(video_duration / len(script_sections)))
+                        video_clips.append(create_video_clip_with_effect(image_path, duration=video_duration / len(script_sections)))
             
             # Add outro image
             outro_img = download_image_from_url(INTRO_OUTRO_IMAGE)
