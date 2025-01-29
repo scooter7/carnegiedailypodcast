@@ -97,7 +97,7 @@ def generate_audio_from_script(script):
         }
         data = {
             "text": script,
-            "voice_id": ELEVENLABS_VOICE_ID",
+            "voice_id": ELEVENLABS_VOICE_ID,
             "model_id": "eleven_multilingual_v1",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}
         }
@@ -125,7 +125,6 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 
 # Generate Master Script
 if st.button("Generate Master Script"):
-    st.write("🛠️ **Generating script...**")
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
 
     if combined_text.strip():
@@ -145,7 +144,6 @@ if st.session_state.master_script:
         "Generated Master Script (editable):", st.session_state.master_script, height=300
     )
 
-    # Dynamically modifiable middle sections
     st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
     middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
@@ -156,5 +154,3 @@ if st.session_state.master_script:
         st.session_state.sections.append("")
         st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=section_splits[i] if i < len(section_splits) else "", height=150)
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
-
-# This script correctly assigns **editable** sections **with images**! 🚀  
