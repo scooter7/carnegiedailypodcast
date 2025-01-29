@@ -279,6 +279,7 @@ if urls:
 
 if st.button("Generate Video"):
     combined_text = ""
+    
     for url in urls:
         text = scrape_text_from_url(url)
         if text:
@@ -286,7 +287,9 @@ if st.button("Generate Video"):
 
     if combined_text:
         # Generate script based on user-defined duration
-        final_script = generate_dynamic_summary_with_duration(combined_text, video_duration, school_name="these amazing schools")
+        final_script = generate_dynamic_summary_with_duration(
+            combined_text, video_duration, school_name="these amazing schools"
+        )
         audio_path = generate_audio_with_openai(final_script, voice="shimmer")
 
         # Ensure the audio duration matches the user-defined video duration
@@ -300,28 +303,35 @@ if st.button("Generate Video"):
                     if image:
                         st.image(image, caption=f"Processing {img_url}")
                         temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
+                        
                         try:
-                        if image.mode != "RGBA":
-                            image = image.convert("RGBA")
-                        image.save(temp_image_path, "PNG")
-                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-                        if video_clip:
-                            video_clips.append(video_clip)
+                            if image.mode != "RGBA":
+                                image = image.convert("RGBA")
+                            image.save(temp_image_path, "PNG")
+
+                            video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+                            if video_clip:
+                                video_clips.append(video_clip)
+                                
                         except Exception as e:
                             logging.error(f"Error processing image {img_url}: {e}")
 
             if video_clips:
                 final_video_path = tempfile.mktemp(suffix=".mp4")
+                
                 try:
                     final_video_path = create_final_video_with_audio_sync(
                         video_clips, audio_path, final_video_path, transition_type=transition_option
                     )
+                    
                     if final_video_path:
                         st.video(final_video_path)
                         st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
                         st.download_button("Download Script", final_script, "script.txt")
+                        
                 except Exception as e:
                     logging.error(f"Error creating final video: {e}")
                     st.error("Failed to create the final video.")
+                    
             else:
                 st.error("No valid video clips were created.")
