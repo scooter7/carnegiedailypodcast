@@ -306,9 +306,6 @@ def image_input_fields(urls):
         url_image_map[url] = images
     return url_image_map
 
-urls = url_input_fields()
-video_clips = []
-
 if urls:
     url_image_map = image_input_fields(urls)
     effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
