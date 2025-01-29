@@ -40,7 +40,6 @@ if "audio_path" not in st.session_state:
 if "video_path" not in st.session_state:
     st.session_state.video_path = None
 
-# Function to download an image and return the saved file path
 def download_image_from_url(url):
     if not url:
         logging.error("Received an empty image URL.")
@@ -51,21 +50,11 @@ def download_image_from_url(url):
         response.raise_for_status()
         
         img = Image.open(BytesIO(response.content))
-
-        # Convert the image to RGB to prevent mode issues
-        img = img.convert("RGB")
-
-        # Save the image as PNG to a temporary file
+        img = img.convert("RGB")  # Ensure compatibility with NumPy arrays
         img_path = tempfile.mktemp(suffix=".png")
-        img.save(img_path, format="PNG")
+        img.save(img_path, format="PNG")  # Save image as PNG
 
-        # Verify the file was actually saved before returning
-        if os.path.exists(img_path):
-            return img_path
-        else:
-            logging.error(f"Image failed to save properly: {url}")
-            return None
-
+        return img_path if os.path.exists(img_path) else None
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
         return None
@@ -204,4 +193,3 @@ if st.button("Create Video & Generate Audio"):
 
     # Download Audio
     st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
-
