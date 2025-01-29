@@ -42,20 +42,29 @@ if "video_path" not in st.session_state:
 
 # Function to download an image from a URL and return a valid file path
 def download_image_from_url(url):
+    """Download an image from a URL, save it as PNG, and return the file path."""
+    if not url:
+        logging.error("Empty image URL received.")
+        return None
+
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
+        
         img = Image.open(BytesIO(response.content))
-        img = img.convert("RGB")  # Ensure compatibility
+        img = img.convert("RGB")  # Ensure compatibility with moviepy
 
-        # Save image to a temp file
-        img_path = tempfile.mktemp(suffix=".png")
+        img_path = tempfile.mktemp(suffix=".png")  # Save as PNG
         img.save(img_path, format="PNG")
 
-        return img_path  # Return the path instead of a PIL Image object
+        if os.path.exists(img_path):
+            return img_path  # Return valid file path
+        else:
+            logging.error(f"Image file {img_path} not found after saving.")
+            return None
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
-        return None  # Return None on failure
+        return None
         
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
@@ -161,9 +170,9 @@ if st.button("Create Video"):
     total_sections = st.session_state.num_sections + 2  # Includes intro and outro
     section_duration = total_audio_duration / total_sections
 
-    # Add intro image as a clip
+    # Add intro image
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
-    if intro_img_path:
+    if intro_img_path and os.path.exists(intro_img_path):
         video_clips.append(ImageClip(intro_img_path).set_duration(section_duration).set_fps(24))
     else:
         logging.error("Intro image failed to load.")
@@ -172,14 +181,15 @@ if st.button("Create Video"):
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i)
         img_path = download_image_from_url(img_url) if img_url else None
-        if img_path:
+
+        if img_path and os.path.exists(img_path):  # Ensure the file exists
             video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
         else:
             logging.error(f"Invalid or missing image for section {i + 1}")
 
-    # Add conclusion image as a clip
+    # Add conclusion image
     outro_img_path = download_image_from_url(CONCLUSION_IMAGE_URL)
-    if outro_img_path:
+    if outro_img_path and os.path.exists(outro_img_path):
         video_clips.append(ImageClip(outro_img_path).set_duration(section_duration).set_fps(24))
     else:
         logging.error("Outro image failed to load.")
@@ -202,4 +212,3 @@ if st.button("Create Video"):
         f"{INTRO_TEXT}\n\n" + "\n\n".join(st.session_state.sections) + f"\n\n{CONCLUSION_TEXT}",
         "script.txt"
     )
-
