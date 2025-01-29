@@ -284,38 +284,38 @@ if st.button("Generate Video"):
 
         # Ensure the audio duration matches the user-defined video duration
         if audio_path:
-            audio = AudioFileClip(audio_path)
-            audio_duration = audio.duration
+    audio = AudioFileClip(audio_path)
+    audio_duration = audio.duration
 
-            for url, images in url_image_map.items():
-                for img_url in images:
-                    image = download_image_from_url(img_url)
-                    if image:
-                        st.image(image, caption=f"Processing {img_url}")
-                        temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
-                        try:
-                            # Convert and save as PNG
-                            if image.mode != "RGBA":
-                                image = image.convert("RGBA")
-                            image.save(temp_image_path, "PNG")
-                            video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-                            if video_clip:
-                                video_clips.append(video_clip)
-                        except Exception as e:
-                            logging.error(f"Error processing image {img_url}: {e}")
-
-            if video_clips:
-                final_video_path = tempfile.mktemp(suffix=".mp4")
+    for url, images in url_image_map.items():  # Ensure `images` is properly defined
+        for img_url in images:
+            image = download_image_from_url(img_url)
+            if image:
+                st.image(image, caption=f"Processing {img_url}")
+                temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
                 try:
-                    final_video_path = create_final_video_with_audio_sync(
-                        video_clips, audio_path, final_video_path, transition_type=transition_option
-                    )
-                    if final_video_path:
-                        st.video(final_video_path)
-                        st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-                        st.download_button("Download Script", final_script, "script.txt")
+                    # Convert and save as PNG
+                    if image.mode != "RGBA":
+                        image = image.convert("RGBA")
+                    image.save(temp_image_path, "PNG")
+                    video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+                    if video_clip:
+                        video_clips.append(video_clip)
                 except Exception as e:
-                    logging.error(f"Error creating final video: {e}")
-                    st.error("Failed to create the final video.")
-            else:
-                st.error("No valid video clips were created.")
+                    logging.error(f"Error processing image {img_url}: {e}")
+
+    if video_clips:
+        final_video_path = tempfile.mktemp(suffix=".mp4")
+        try:
+            final_video_path = create_final_video_with_audio_sync(
+                video_clips, audio_path, final_video_path, transition_type=transition_option
+            )
+            if final_video_path:
+                st.video(final_video_path)
+                st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+                st.download_button("Download Script", final_script, "script.txt")
+        except Exception as e:
+            logging.error(f"Error creating final video: {e}")
+            st.error("Failed to create the final video.")
+    else:
+        st.error("No valid video clips were created.")
