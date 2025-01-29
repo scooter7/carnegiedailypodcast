@@ -140,12 +140,13 @@ if st.session_state.master_script:
     st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
     middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    section_splits = middle_content.split("\n\n")[:st.session_state.num_sections]
+    section_splits = middle_content.split("\n\n")
+
+    st.session_state.sections = section_splits[:st.session_state.num_sections] + [""] * max(0, st.session_state.num_sections - len(section_splits))
 
     st.subheader("Edit Middle Sections & Assign Images")
     for i in range(st.session_state.num_sections):
-        st.session_state.sections.append("")
-        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=section_splits[i] if i < len(section_splits) else "", height=150)
+        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150)
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
 
 if st.button("Create Video & Generate Audio"):
@@ -153,6 +154,10 @@ if st.button("Create Video & Generate Audio"):
     if not st.session_state.audio_path:
         st.error("Failed to generate audio.")
         st.stop()
+
+    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
+
+    st.success("✅ Audio successfully generated! Now implementing video...")
 
     audio = AudioFileClip(st.session_state.audio_path)
     video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
@@ -165,11 +170,10 @@ if st.button("Create Video & Generate Audio"):
                 video_clips.append(ImageClip(image).set_duration(5))
 
     video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
-    
+
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
     st.video(final_video_path)
     st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
-    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
