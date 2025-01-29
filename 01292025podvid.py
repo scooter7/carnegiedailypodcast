@@ -10,14 +10,15 @@ import logging
 import json
 import os
 
-# Load API keys securely from Streamlit secrets
-ELEVENLABS_API_KEY = st.secrets["ELEVENLABS_API_KEY"]
-OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-openai.api_key = OPENAI_API_KEY  # Set OpenAI API key
+# Logging setup
+logging.basicConfig(level=logging.INFO)
 
 # Constants
 WORDS_PER_MINUTE = 150
 ELEVENLABS_VOICE_ID = "NYy9s57OPECPcDJavL3T"
+ELEVENLABS_API_KEY = st.secrets["ELEVENLABS_API_KEY"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+openai.api_key = OPENAI_API_KEY  # Set OpenAI API key
 
 INTRO_TEXT = (
     "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
@@ -41,8 +42,6 @@ if "section_images" not in st.session_state:
     st.session_state.section_images = {}
 if "num_sections" not in st.session_state:
     st.session_state.num_sections = 3  # Default middle sections
-if "audio_path" not in st.session_state:
-    st.session_state.audio_path = None
 
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
@@ -75,36 +74,6 @@ def generate_dynamic_summary(all_text, desired_duration):
         logging.error(f"Error generating summary: {e}")
         return "[Error generating summary]"
 
-# Function to generate audio from script using ElevenLabs
-def generate_audio_from_script(script):
-    try:
-        headers = {
-            "xi-api-key": ELEVENLABS_API_KEY,
-            "Content-Type": "application/json"
-        }
-        data = {
-            "text": script,
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.8},
-            "voice_id": ELEVENLABS_VOICE_ID,
-            "model_id": "eleven_multilingual_v1"
-        }
-        response = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
-            headers=headers,
-            data=json.dumps(data)
-        )
-        if response.status_code == 200:
-            audio_path = tempfile.mktemp(suffix=".mp3")
-            with open(audio_path, "wb") as f:
-                f.write(response.content)
-            return audio_path
-        else:
-            logging.error(f"Error generating audio from ElevenLabs: {response.text}")
-            return None
-    except Exception as e:
-        logging.error(f"Error generating audio: {e}")
-        return None
-
 # Function to download an image from a URL
 def download_image_from_url(url):
     try:
@@ -134,49 +103,79 @@ if st.session_state.master_script:
     st.subheader("Master Script")
     st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
-# Generate Video & Audio
-if st.button("Create Video & Generate Audio"):
-    st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
-    
-    if not st.session_state.audio_path:
+    # User decides the number of middle sections
+    st.subheader("Section Configuration")
+    st.session_state.num_sections = st.number_input(
+        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
+    )
+
+    # Create sections dynamically based on user input
+    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
+    section_splits = middle_content.split("\n\n") if middle_content else []
+
+    # Preserve previously entered section images and content
+    if len(st.session_state.sections) != st.session_state.num_sections:
+        st.session_state.sections = section_splits[:st.session_state.num_sections] + [
+            "" for _ in range(max(0, st.session_state.num_sections - len(section_splits)))
+        ]
+        for i in range(st.session_state.num_sections):
+            if i not in st.session_state.section_images:
+                st.session_state.section_images[i] = ""
+
+    # User edits content and assigns images for middle sections
+    st.subheader("Edit Middle Sections and Assign Images")
+    for i in range(st.session_state.num_sections):
+        st.session_state.sections[i] = st.text_area(
+            f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150
+        )
+        st.session_state.section_images[i] = st.text_input(
+            f"Image URL for Section {i + 1}:", value=st.session_state.section_images[i]
+        )
+
+# Generate Video
+if st.button("Create Video"):
+    video_clips = []
+    audio_path = tempfile.mktemp(suffix=".mp3")
+
+    # Generate script audio
+    if not os.path.exists(audio_path):
         st.error("Failed to generate audio for the script.")
         st.stop()
 
-    audio = AudioFileClip(st.session_state.audio_path)
-    video_clips = []
+    audio = AudioFileClip(audio_path)
+    total_audio_duration = audio.duration
+    total_sections = st.session_state.num_sections + 2  # Include intro and outro
+    section_duration = total_audio_duration / total_sections
 
+    # Add intro section
     intro_img = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
         intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(audio.duration).set_fps(24))
+        video_clips.append(ImageClip(intro_path).set_duration(section_duration).set_fps(24))
 
+    # Add user-defined middle sections with images
+    for i, content in enumerate(st.session_state.sections):
+        img_url = st.session_state.section_images.get(i)
+        if img_url:
+            image = download_image_from_url(img_url)
+            if image:
+                img_path = tempfile.mktemp(suffix=".png")
+                image.save(img_path, "PNG")
+                video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
+
+    # Add conclusion section
+    outro_img = download_image_from_url(CONCLUSION_IMAGE_URL)
+    if outro_img:
+        outro_path = tempfile.mktemp(suffix=".png")
+        outro_img.save(outro_path, "PNG")
+        video_clips.append(ImageClip(outro_path).set_duration(section_duration).set_fps(24))
+
+    # Combine video clips and audio
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
-    st.session_state.video_path = final_video_path
-
-# Display video & provide download options
-if "video_path" in st.session_state and st.session_state.video_path:
-    st.subheader("Generated Video")
-    st.video(st.session_state.video_path)
-
-    st.download_button(
-        "Download Video", 
-        open(st.session_state.video_path, "rb"), 
-        file_name="generated_video.mp4",
-        mime="video/mp4"
-    )
-
-# Provide MP3 download button
-if "audio_path" in st.session_state and st.session_state.audio_path:
-    st.subheader("Generated Audio")
-    st.audio(st.session_state.audio_path)  # Play audio preview in Streamlit
-
-    st.download_button(
-        "Download Audio (MP3)", 
-        open(st.session_state.audio_path, "rb"), 
-        file_name="generated_audio.mp3",
-        mime="audio/mp3"
-    )
+    # Display and download
+    st.video(final_video_path)
+    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
