@@ -42,10 +42,13 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
+# Ensure urls is defined before using it
+urls = url_input_fields() if "urls" not in locals() else urls
+
 # Ensure url_image_map is defined before using it
 url_image_map = {}
 
-if urls:
+if urls:  # Make sure urls exist before processing images
     url_image_map = image_input_fields(urls)
 
 # Proceed only if url_image_map has valid entries
