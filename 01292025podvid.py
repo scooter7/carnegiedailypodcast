@@ -107,19 +107,6 @@ def generate_audio_from_script(script):
         st.error(f"Exception in ElevenLabs API Call: {str(e)}")
         return None
 
-# Function to download an image from a URL
-def download_image_from_url(url):
-    try:
-        response = requests.get(url, timeout=10)
-        response.raise_for_status()
-        img = Image.open(BytesIO(response.content))
-        if img.mode != "RGBA":
-            img = img.convert("RGBA")
-        return img
-    except Exception as e:
-        logging.error(f"Error downloading image from {url}: {e}")
-        return None
-
 # UI: Input URLs
 st.title("Custom Video Script and Section Creator")
 urls = st.text_area("Enter URLs (one per line):", height=100).splitlines()
@@ -129,22 +116,23 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 if st.button("Generate Master Script"):
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
     if combined_text:
-        st.session_state.master_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
+        full_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
+        st.session_state.master_script = full_script
 
 # Editable Master Script
 if st.session_state.master_script:
     st.subheader("Master Script")
     st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
-    # User decides the number of middle sections
-    st.subheader("Section Configuration")
-    st.session_state.num_sections = st.number_input(
-        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
-    )
+    # Split script into middle sections
+    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
+    section_splits = middle_content.split("\n\n") if middle_content else []
+    st.session_state.sections = section_splits[:st.session_state.num_sections]
 
-    # Allow user to enter images for each section
+    # UI for middle sections
+    st.subheader("Edit Middle Sections & Assign Images")
     for i in range(st.session_state.num_sections):
-        st.session_state.sections.append("")
+        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150)
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
 
 # Generate Video & Audio
