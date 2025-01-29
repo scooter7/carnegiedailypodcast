@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 
 # Load API keys securely from Streamlit secrets
 ELEVENLABS_API_KEY = st.secrets["ELEVENLABS_API_KEY"]
-openai.api_key = st.secrets["OPENAI_API_KEY"]  # Direct assignment
+openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Constants
 WORDS_PER_MINUTE = 150
@@ -107,6 +107,19 @@ def generate_audio_from_script(script):
         st.error(f"Exception in ElevenLabs API Call: {str(e)}")
         return None
 
+# Function to download an image from a URL
+def download_image_from_url(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
+        return img
+    except Exception as e:
+        logging.error(f"Error downloading image from {url}: {e}")
+        return None
+
 # UI: Input URLs
 st.title("Custom Video Script and Section Creator")
 urls = st.text_area("Enter URLs (one per line):", height=100).splitlines()
@@ -123,36 +136,40 @@ if st.session_state.master_script:
     st.subheader("Master Script")
     st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
+    # User decides the number of middle sections
+    st.subheader("Section Configuration")
+    st.session_state.num_sections = st.number_input(
+        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
+    )
+
+    # Allow user to enter images for each section
+    for i in range(st.session_state.num_sections):
+        st.session_state.sections.append("")
+        st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
+
 # Generate Video & Audio
 if st.button("Create Video & Generate Audio"):
     st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
-
     if not st.session_state.audio_path:
         st.error("Failed to generate audio for the script.")
         st.stop()
 
     audio = AudioFileClip(st.session_state.audio_path)
-    video_clips = []
+    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
 
-    intro_img = download_image_from_url(INTRO_IMAGE_URL)
-    if intro_img:
-        intro_path = tempfile.mktemp(suffix=".png")
-        intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(audio.duration).set_fps(24))
+    for i in range(st.session_state.num_sections):
+        img_url = st.session_state.section_images[i]
+        if img_url:
+            image = download_image_from_url(img_url)
+            if image:
+                video_clips.append(ImageClip(image).set_duration(5))
 
+    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
+    
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
-    st.session_state.video_path = final_video_path
-
-# Provide MP3 & Video Download Options
-if "audio_path" in st.session_state and st.session_state.audio_path:
-    st.subheader("Generated Audio")
-    st.audio(st.session_state.audio_path)  # Play audio preview
+    st.video(final_video_path)
+    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
     st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
-
-if "video_path" in st.session_state and st.session_state.video_path:
-    st.subheader("Generated Video")
-    st.video(st.session_state.video_path)
-    st.download_button("Download Video", open(st.session_state.video_path, "rb"), "generated_video.mp4", mime="video/mp4")
