@@ -40,22 +40,22 @@ if "audio_path" not in st.session_state:
 if "video_path" not in st.session_state:
     st.session_state.video_path = None
 
-# Function to download an image and return the saved file path
+# Function to download an image and return a valid file path for MoviePy
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-
+        
         img = Image.open(BytesIO(response.content))
 
-        # Ensure image is in RGB mode (some images may be in other formats like P or RGBA)
+        # Ensure the image is in RGB mode (some images may be in grayscale or RGBA)
         img = img.convert("RGB")
 
-        # Save the image and return the file path
+        # Save image as a proper format for MoviePy
         img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
 
-        return img_path  # Return the saved file path, not an Image object
+        return img_path  # Return the valid file path
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
         return None
@@ -147,7 +147,7 @@ if st.session_state.master_script:
         st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150)
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
 
-# Generate Audio & Video
+# Generate Video
 if st.button("Create Video & Generate Audio"):
     st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
     if not st.session_state.audio_path:
@@ -157,25 +157,31 @@ if st.button("Create Video & Generate Audio"):
     audio = AudioFileClip(st.session_state.audio_path)
     video_clips = []
 
+    # Add Intro Image
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path:
         video_clips.append(ImageClip(intro_img_path).set_duration(3))
 
+    # Add User-Defined Middle Sections
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i, "")
         img_path = download_image_from_url(img_url) if img_url else None
         if img_path:
             video_clips.append(ImageClip(img_path).set_duration(5))
 
+    # Add Conclusion Image
     outro_img_path = download_image_from_url(CONCLUSION_IMAGE_URL)
     if outro_img_path:
         video_clips.append(ImageClip(outro_img_path).set_duration(3))
 
+    # Ensure we have video clips before proceeding
     if video_clips:
         final_video_path = tempfile.mktemp(suffix=".mp4")
         combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
         combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
+
         st.video(final_video_path)
         st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
 
+    # Download Audio
     st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
