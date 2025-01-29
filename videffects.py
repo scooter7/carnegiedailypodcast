@@ -301,7 +301,6 @@ if st.button("Generate Video"):
                         st.image(image, caption=f"Processing {img_url}")
                         temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
                         try:
-                        # Convert and save as PNG
                         if image.mode != "RGBA":
                             image = image.convert("RGBA")
                         image.save(temp_image_path, "PNG")
