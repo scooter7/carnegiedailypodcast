@@ -287,14 +287,20 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
 # Streamlit UI
 st.title("Custom Video and Script Generator")
 
+# Store num_urls in session state to prevent duplicate keys
+if "num_urls" not in st.session_state:
+    st.session_state.num_urls = 1
+
 # Function to get URLs from user input
 def url_input_fields():
     urls = []
     with st.container():
         st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1, key="num_urls")
-        for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"url_{i}")
+        st.session_state.num_urls = st.number_input(
+            "Number of URLs", min_value=1, value=st.session_state.num_urls, step=1, key="unique_num_urls"
+        )
+        for i in range(st.session_state.num_urls):
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"unique_url_{i}")
             if url:
                 urls.append(url)
     return urls
@@ -303,19 +309,19 @@ def url_input_fields():
 def image_input_fields(urls):
     url_image_map = {}
     for i, url in enumerate(urls):
-        with st.container():  # Using a container to group elements and avoid duplication
+        with st.container():
             st.subheader(f"Images for [{url}]({url})")  # Clickable link
             num_images = st.number_input(
                 f"Number of images for URL #{i + 1}", 
                 min_value=1, value=1, step=1, 
-                key=f"num_images_{i}"
+                key=f"unique_num_images_{i}"
             )
             images = []
             for j in range(num_images):
                 image_url = st.text_input(
                     f"Image #{j + 1} for URL #{i + 1}", 
                     placeholder="Enter an image URL", 
-                    key=f"image_url_{i}_{j}"
+                    key=f"unique_image_url_{i}_{j}"
                 )
                 if image_url:
                     images.append(image_url)
@@ -332,7 +338,7 @@ if urls:
 # Additional UI Elements
 effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
 transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
-video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
+video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60, key="unique_video_duration")
 
 if st.button("Generate Video"):
     video_clips = []
