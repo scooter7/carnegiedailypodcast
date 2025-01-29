@@ -8,17 +8,16 @@ from PIL import Image
 from io import BytesIO
 import logging
 import json
-
-# ElevenLabs API imports
-import base64
 import os
 
-logging.basicConfig(level=logging.INFO)
+# Load API keys securely from Streamlit secrets
+ELEVENLABS_API_KEY = st.secrets["ELEVENLABS_API_KEY"]
+OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+openai.api_key = OPENAI_API_KEY  # Set OpenAI API key
 
 # Constants
 WORDS_PER_MINUTE = 150
 ELEVENLABS_VOICE_ID = "NYy9s57OPECPcDJavL3T"
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "your-elevenlabs-api-key")  # Replace with Streamlit secrets
 
 INTRO_TEXT = (
     "Welcome to the CollegeXpress Campus Countdown, where we explore colleges and universities around the country "
@@ -27,7 +26,7 @@ INTRO_TEXT = (
 INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg?raw=true"
 CONCLUSION_TEXT = (
     "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
-    "Just click the green 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
+    "Just click the green, 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
     "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
     "Until next time, happy college hunting!"
 )
@@ -54,7 +53,7 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to dynamically generate a summary script based on duration
+# Function to generate a dynamic summary script
 def generate_dynamic_summary(all_text, desired_duration):
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
     system_prompt = (
@@ -88,7 +87,7 @@ def generate_audio_from_script(script):
             "model_id": "eleven_multilingual_v1"
         }
         response = requests.post(
-            "https://api.elevenlabs.io/v1/text-to-speech/{}".format(ELEVENLABS_VOICE_ID),
+            f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}",
             headers=headers,
             data=json.dumps(data)
         )
@@ -124,35 +123,14 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 
 # Generate Master Script
 if st.button("Generate Master Script"):
-    combined_text = ""
-    for url in urls:
-        combined_text += scrape_text_from_url(url)
+    combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
     if combined_text:
-        dynamic_summary = generate_dynamic_summary(combined_text, video_duration)
-        st.session_state.master_script = f"{INTRO_TEXT}\n\n{dynamic_summary}\n\n{CONCLUSION_TEXT}"
+        st.session_state.master_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
 
 # Editable Master Script
 if st.session_state.master_script:
     st.subheader("Master Script")
-    st.session_state.master_script = st.text_area(
-        "Generated Master Script (editable):", st.session_state.master_script, height=300
-    )
-
-    # User decides the number of middle sections
-    st.subheader("Section Configuration")
-    st.session_state.num_sections = st.number_input(
-        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
-    )
-
-    # Create sections dynamically based on user input
-    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    section_splits = middle_content.split("\n\n") if middle_content else []
-
-    if len(st.session_state.sections) != st.session_state.num_sections:
-        st.session_state.sections = section_splits[:st.session_state.num_sections] + [
-            "" for _ in range(max(0, st.session_state.num_sections - len(section_splits)))
-        ]
-        st.session_state.section_images = {i: "" for i in range(st.session_state.num_sections)}
+    st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
 # Generate Video
 if st.button("Create Video"):
@@ -164,24 +142,11 @@ if st.button("Create Video"):
         st.stop()
 
     audio = AudioFileClip(audio_path)
-    total_audio_duration = audio.duration
-    total_sections = st.session_state.num_sections + 2  # Include intro and outro
-    section_duration = total_audio_duration / total_sections
-
     intro_img = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
         intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(section_duration).set_fps(24))
-
-    for i, content in enumerate(st.session_state.sections):
-        img_url = st.session_state.section_images.get(i)
-        if img_url:
-            image = download_image_from_url(img_url)
-            if image:
-                img_path = tempfile.mktemp(suffix=".png")
-                image.save(img_path, "PNG")
-                video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
+        video_clips.append(ImageClip(intro_path).set_duration(audio.duration).set_fps(24))
 
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
