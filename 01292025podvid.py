@@ -40,18 +40,19 @@ if "audio_path" not in st.session_state:
 if "video_path" not in st.session_state:
     st.session_state.video_path = None
 
-# Function to download an image and return the file path
+# Function to download an image and return the saved file path
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
+        
         img = Image.open(BytesIO(response.content))
 
-        # Save image to a temporary file and return the file path
+        # Save image as PNG and return the path
         img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
 
-        return img_path  # Return the file path instead of the image object
+        return img_path  # Return the file path instead of an Image object
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
         return None
@@ -156,6 +157,7 @@ if st.button("Create Video & Generate Audio"):
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path:
         video_clips.append(ImageClip(intro_img_path).set_duration(3))
+
 
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i, "")
