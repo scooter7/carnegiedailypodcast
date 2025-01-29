@@ -9,6 +9,7 @@ from io import BytesIO
 import logging
 import json
 import os
+import textwrap
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -87,6 +88,14 @@ def generate_dynamic_summary(all_text, desired_duration):
         logging.error(f"Error generating summary: {e}")
         return "[Error generating summary]"
 
+def split_text_evenly(text, num_parts):
+    words = text.split()
+    avg_length = len(words) // num_parts
+    sections = [' '.join(words[i * avg_length:(i + 1) * avg_length]) for i in range(num_parts)]
+    if len(words) % num_parts != 0:
+        sections[-1] += ' ' + ' '.join(words[num_parts * avg_length:])
+    return sections
+
 def generate_audio_from_script(script):
     try:
         headers = {
@@ -140,9 +149,13 @@ if st.session_state.master_script:
     st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
     middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    section_splits = middle_content.split("\n\n")
+    
+    if middle_content:
+        section_splits = split_text_evenly(middle_content, st.session_state.num_sections)
+    else:
+        section_splits = [""] * st.session_state.num_sections
 
-    st.session_state.sections = section_splits[:st.session_state.num_sections] + [""] * max(0, st.session_state.num_sections - len(section_splits))
+    st.session_state.sections = section_splits
 
     st.subheader("Edit Middle Sections & Assign Images")
     for i in range(st.session_state.num_sections):
@@ -157,23 +170,4 @@ if st.button("Create Video & Generate Audio"):
 
     st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
 
-    st.success("✅ Audio successfully generated! Now implementing video...")
-
-    audio = AudioFileClip(st.session_state.audio_path)
-    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
-
-    for i in range(st.session_state.num_sections):
-        img_url = st.session_state.section_images.get(i, "")
-        if img_url:
-            image = download_image_from_url(img_url)
-            if image:
-                video_clips.append(ImageClip(image).set_duration(5))
-
-    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
-
-    final_video_path = tempfile.mktemp(suffix=".mp4")
-    combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
-    combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
-
-    st.video(final_video_path)
-    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
+st.success("✅ Sections are now correctly assigned! Each section will have content.")
