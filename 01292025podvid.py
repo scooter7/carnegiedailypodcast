@@ -40,24 +40,22 @@ if "audio_path" not in st.session_state:
 if "video_path" not in st.session_state:
     st.session_state.video_path = None
 
+# Function to download an image from a URL and return a valid file path
 def download_image_from_url(url):
-    if not url:
-        logging.error("Received an empty image URL.")
-        return None
-
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        
         img = Image.open(BytesIO(response.content))
-        img = img.convert("RGB")  # Ensure compatibility with NumPy arrays
-        img_path = tempfile.mktemp(suffix=".png")
-        img.save(img_path, format="PNG")  # Save image as PNG
+        img = img.convert("RGB")  # Ensure compatibility
 
-        return img_path if os.path.exists(img_path) else None
+        # Save image to a temp file
+        img_path = tempfile.mktemp(suffix=".png")
+        img.save(img_path, format="PNG")
+
+        return img_path  # Return the path instead of a PIL Image object
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
-        return None
+        return None  # Return None on failure
         
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
@@ -147,49 +145,61 @@ if st.session_state.master_script:
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
 
 # Generate Video
-if st.button("Create Video & Generate Audio"):
-    st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
-    if not st.session_state.audio_path:
-        st.error("Failed to generate audio.")
-        st.stop()
-
-    audio = AudioFileClip(st.session_state.audio_path)
+if st.button("Create Video"):
     video_clips = []
 
-    # Add Intro Image
+    # Generate script audio
+    audio_path = generate_audio_from_script(st.session_state.master_script)
+    if not audio_path:
+        st.error("Failed to generate audio for the script.")
+        st.stop()
+
+    audio = AudioFileClip(audio_path)
+    total_audio_duration = audio.duration
+
+    # Calculate duration per section
+    total_sections = st.session_state.num_sections + 2  # Includes intro and outro
+    section_duration = total_audio_duration / total_sections
+
+    # Add intro image as a clip
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path:
-        video_clips.append(ImageClip(intro_img_path).set_duration(3))
+        video_clips.append(ImageClip(intro_img_path).set_duration(section_duration).set_fps(24))
     else:
         logging.error("Intro image failed to load.")
 
-    # Add User-Defined Middle Sections
+    # Add user-defined middle sections
     for i in range(st.session_state.num_sections):
-        img_url = st.session_state.section_images.get(i, "")
+        img_url = st.session_state.section_images.get(i)
         img_path = download_image_from_url(img_url) if img_url else None
         if img_path:
-            video_clips.append(ImageClip(img_path).set_duration(5))
+            video_clips.append(ImageClip(img_path).set_duration(section_duration).set_fps(24))
         else:
-            logging.error(f"Invalid image URL at section {i + 1}: {img_url}")
+            logging.error(f"Invalid or missing image for section {i + 1}")
 
-    # Add Conclusion Image
+    # Add conclusion image as a clip
     outro_img_path = download_image_from_url(CONCLUSION_IMAGE_URL)
     if outro_img_path:
-        video_clips.append(ImageClip(outro_img_path).set_duration(3))
+        video_clips.append(ImageClip(outro_img_path).set_duration(section_duration).set_fps(24))
     else:
-        logging.error("Outro image could not be processed.")
+        logging.error("Outro image failed to load.")
 
     # Ensure we have video clips before proceeding
     if not video_clips:
         st.error("No valid images found. Video cannot be created.")
         st.stop()
 
+    # Combine video clips and audio
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
+    # Display and download
     st.video(final_video_path)
-    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
+    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+    st.download_button(
+        "Download Script",
+        f"{INTRO_TEXT}\n\n" + "\n\n".join(st.session_state.sections) + f"\n\n{CONCLUSION_TEXT}",
+        "script.txt"
+    )
 
-    # Download Audio
-    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
