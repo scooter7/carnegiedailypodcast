@@ -45,14 +45,17 @@ def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        
+
         img = Image.open(BytesIO(response.content))
 
-        # Save image as PNG and return the path
+        # Ensure image is in RGB mode (some images may be in other formats like P or RGBA)
+        img = img.convert("RGB")
+
+        # Save the image and return the file path
         img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
 
-        return img_path  # Return the file path instead of an Image object
+        return img_path  # Return the saved file path, not an Image object
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
         return None
@@ -157,7 +160,6 @@ if st.button("Create Video & Generate Audio"):
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path:
         video_clips.append(ImageClip(intro_img_path).set_duration(3))
-
 
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i, "")
