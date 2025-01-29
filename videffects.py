@@ -42,12 +42,6 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Ensure url_image_map is initialized
-url_image_map = {}
-
-if urls:
-    url_image_map = image_input_fields(urls)
-
 # Ensure url_image_map is defined before using it
 if url_image_map:
     for url, images in url_image_map.items():
