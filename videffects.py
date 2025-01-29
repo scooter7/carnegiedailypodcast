@@ -287,19 +287,26 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
 # Streamlit UI
 st.title("Custom Video and Script Generator")
 
-# Store num_urls in session state to prevent duplicate keys
+# Ensure session state for num_urls
 if "num_urls" not in st.session_state:
-    st.session_state.num_urls = 1
+    st.session_state.num_urls = 1  # Default value
 
 # Function to get URLs from user input
 def url_input_fields():
     urls = []
     with st.container():
         st.subheader("Enter Page URLs")
-        st.session_state.num_urls = st.number_input(
-            "Number of URLs", min_value=1, value=st.session_state.num_urls, step=1, key="unique_num_urls"
+        num_urls = st.number_input(
+            "Number of URLs", 
+            min_value=1, value=st.session_state.num_urls, step=1, 
+            key="unique_num_urls"
         )
-        for i in range(st.session_state.num_urls):
+        
+        # Update session state if the user changes num_urls
+        if num_urls != st.session_state.num_urls:
+            st.session_state.num_urls = num_urls
+
+        for i in range(num_urls):
             url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"unique_url_{i}")
             if url:
                 urls.append(url)
