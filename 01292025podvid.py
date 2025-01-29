@@ -138,22 +138,39 @@ if st.button("Generate Master Script"):
 # Editable Master Script
 if st.session_state.master_script:
     st.subheader("📜 Master Script")
-    st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
+    st.session_state.master_script = st.text_area(
+        "Generated Master Script (editable):", st.session_state.master_script, height=300
+    )
 
-    st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
+    st.subheader("🔹 Section Configuration")
+    st.session_state.num_sections = st.number_input(
+        "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
+    )
 
+    # Extract middle content by removing intro and conclusion
     middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    section_splits = middle_content.split("\n\n")
 
-    if len(section_splits) < st.session_state.num_sections:
-        section_splits += [""] * (st.session_state.num_sections - len(section_splits))
-    
-    st.session_state.sections = section_splits[:st.session_state.num_sections]
+    # Properly split the middle content into sections
+    sentences = middle_content.split(". ")  # Split by sentence
+    num_sentences = len(sentences)
+    num_sections = st.session_state.num_sections
 
-    st.subheader("Edit Middle Sections & Assign Images")
-    for i in range(st.session_state.num_sections):
-        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150)
-        st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
+    # Evenly distribute sentences among sections
+    section_splits = [" ".join(sentences[i::num_sections]) for i in range(num_sections)]
+
+    # Ensure session state contains the correct number of sections
+    if len(st.session_state.sections) != num_sections:
+        st.session_state.sections = section_splits
+
+    # Allow users to edit each section and assign images
+    st.subheader("✏️ Edit Sections & Assign Images")
+    for i in range(num_sections):
+        st.session_state.sections[i] = st.text_area(
+            f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150
+        )
+        st.session_state.section_images[i] = st.text_input(
+            f"Image URL for Section {i + 1}:", value=st.session_state.section_images.get(i, "")
+        )
 
 # Generate Video
 if st.button("Create Video"):
