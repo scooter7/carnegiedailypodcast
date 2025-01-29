@@ -46,6 +46,17 @@ if "num_sections" not in st.session_state:
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = None
 
+# Function to download an image from a URL
+def download_image_from_url(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content))
+        return img
+    except Exception as e:
+        logging.error(f"Error downloading image from {url}: {e}")
+        return None
+
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
     try:
@@ -116,24 +127,7 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 if st.button("Generate Master Script"):
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
     if combined_text:
-        full_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
-        st.session_state.master_script = full_script
-
-# Editable Master Script
-if st.session_state.master_script:
-    st.subheader("Master Script")
-    st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
-
-    # Split script into middle sections
-    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    section_splits = middle_content.split("\n\n") if middle_content else []
-    st.session_state.sections = section_splits[:st.session_state.num_sections]
-
-    # UI for middle sections
-    st.subheader("Edit Middle Sections & Assign Images")
-    for i in range(st.session_state.num_sections):
-        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=st.session_state.sections[i], height=150)
-        st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
+        st.session_state.master_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
 
 # Generate Video & Audio
 if st.button("Create Video & Generate Audio"):
@@ -143,17 +137,31 @@ if st.button("Create Video & Generate Audio"):
         st.stop()
 
     audio = AudioFileClip(st.session_state.audio_path)
-    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
+
+    # Image setup
+    video_clips = []
+
+    intro_img = download_image_from_url(INTRO_IMAGE_URL)
+    if intro_img:
+        intro_path = tempfile.mktemp(suffix=".png")
+        intro_img.save(intro_path, "PNG")
+        video_clips.append(ImageClip(intro_path).set_duration(3))
 
     for i in range(st.session_state.num_sections):
-        img_url = st.session_state.section_images[i]
+        img_url = st.session_state.section_images.get(i, "")
         if img_url:
             image = download_image_from_url(img_url)
             if image:
-                video_clips.append(ImageClip(image).set_duration(5))
+                img_path = tempfile.mktemp(suffix=".png")
+                image.save(img_path, "PNG")
+                video_clips.append(ImageClip(img_path).set_duration(5))
 
-    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
-    
+    outro_img = download_image_from_url(CONCLUSION_IMAGE_URL)
+    if outro_img:
+        outro_path = tempfile.mktemp(suffix=".png")
+        outro_img.save(outro_path, "PNG")
+        video_clips.append(ImageClip(outro_path).set_duration(3))
+
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
