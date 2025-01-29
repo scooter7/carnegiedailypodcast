@@ -43,7 +43,13 @@ def download_image_from_url(url):
         return None
 
 # Ensure url_image_map is defined before using it
-if url_image_map:
+url_image_map = {}
+
+if urls:
+    url_image_map = image_input_fields(urls)
+
+# Proceed only if url_image_map has valid entries
+if url_image_map and any(url_image_map.values()):  # Ensure at least one image exists
     for url, images in url_image_map.items():
         if images:  # Ensure images exist before iterating
             for img_url in images:
@@ -65,7 +71,7 @@ if url_image_map:
         else:
             logging.warning(f"No images found for URL: {url}")
 else:
-    logging.warning("No valid images found in url_image_map.")
+    logging.warning("No valid images found in url_image_map or all image lists are empty.")
 
 # Function to dynamically generate a summary script based on duration
 def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
