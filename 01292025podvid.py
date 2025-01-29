@@ -50,17 +50,19 @@ def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-        
-        img = Image.open(BytesIO(response.content))
-        img = img.convert("RGB")  # Ensure compatibility with moviepy
 
-        img_path = tempfile.mktemp(suffix=".png")  # Save as PNG
+        img = Image.open(BytesIO(response.content))
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")  # Keep RGBA for transparency support
+
+        # Save image to a temporary file
+        img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
 
         if os.path.exists(img_path):
-            return img_path  # Return valid file path
+            return img_path  # Return a valid file path
         else:
-            logging.error(f"Image file {img_path} not found after saving.")
+            logging.error(f"Failed to save image from {url}")
             return None
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
