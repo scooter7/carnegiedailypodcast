@@ -44,6 +44,44 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
+# Function to get URLs from user input
+def url_input_fields():
+    urls = []
+    with st.container():
+        st.subheader("Enter Page URLs")
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1, key="num_urls")
+        for i in range(num_urls):
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"url_{i}")
+            if url:
+                urls.append(url)
+    return urls
+
+# Function to get image URLs for each webpage
+def image_input_fields(urls):
+    url_image_map = {}
+    for i, url in enumerate(urls):
+        with st.container():  # Use a container to avoid repetition
+            st.subheader(f"Images for [{url}]({url})")  # Avoid duplicate display
+
+            num_images = st.number_input(
+                f"Number of images for URL #{i + 1}", 
+                min_value=1, value=1, step=1, 
+                key=f"num_images_{i}"
+            )
+
+            images = []
+            for j in range(num_images):
+                image_url = st.text_input(
+                    f"Image #{j + 1} for URL #{i + 1}", 
+                    placeholder="Enter an image URL", 
+                    key=f"image_url_{i}_{j}"
+                )
+                if image_url:
+                    images.append(image_url)
+
+            url_image_map[url] = images
+    return url_image_map
+
 # Ensure urls is defined before using it
 urls = url_input_fields()
 
@@ -249,43 +287,57 @@ def create_final_video_with_audio_sync(video_clips, script_audio_path, output_pa
 # Streamlit UI
 st.title("Custom Video and Script Generator")
 
-# Input fields for URLs
+# Function to get URLs from user input
 def url_input_fields():
     urls = []
     with st.container():
         st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1, key="num_urls")
         for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
-            urls.append(url)
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"url_{i}")
+            if url:
+                urls.append(url)
     return urls
 
-# Input fields for images
+# Function to get image URLs for each webpage
 def image_input_fields(urls):
     url_image_map = {}
     for i, url in enumerate(urls):
-        st.subheader(f"Images for {url}")
-        num_images = st.number_input(
-            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
-        )
-        images = []
-        for j in range(num_images):
-            image_url = st.text_input(
-                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
+        with st.container():  # Using a container to group elements and avoid duplication
+            st.subheader(f"Images for [{url}]({url})")  # Clickable link
+            num_images = st.number_input(
+                f"Number of images for URL #{i + 1}", 
+                min_value=1, value=1, step=1, 
+                key=f"num_images_{i}"
             )
-            images.append(image_url)
-        url_image_map[url] = images
+            images = []
+            for j in range(num_images):
+                image_url = st.text_input(
+                    f"Image #{j + 1} for URL #{i + 1}", 
+                    placeholder="Enter an image URL", 
+                    key=f"image_url_{i}_{j}"
+                )
+                if image_url:
+                    images.append(image_url)
+            url_image_map[url] = images
     return url_image_map
 
-if urls:
-    url_image_map = image_input_fields(urls)
-    effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
-    transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
-    video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
+# Get URLs
+urls = url_input_fields()
+
+# **Only Call image_input_fields Once**
+if urls:  
+    url_image_map = image_input_fields(urls)  
+
+# Additional UI Elements
+effect_option = st.selectbox("Select an Effect:", ["None", "Cartoon", "Anime", "Sketch"])
+transition_option = st.selectbox("Select a Transition:", ["None", "Fade", "Slide"])
+video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
 if st.button("Generate Video"):
+    video_clips = []
     combined_text = ""
-    
+
     for url in urls:
         text = scrape_text_from_url(url)
         if text:
