@@ -40,9 +40,7 @@ if "audio_path" not in st.session_state:
 if "video_path" not in st.session_state:
     st.session_state.video_path = None
 
-import os
-
-# Function to download an image and return a valid file path for MoviePy
+# Function to download an image and return the saved file path
 def download_image_from_url(url):
     if not url:
         logging.error("Received an empty image URL.")
@@ -54,10 +52,10 @@ def download_image_from_url(url):
         
         img = Image.open(BytesIO(response.content))
 
-        # Ensure the image is in RGB mode (avoid any 'shape' errors)
+        # Convert the image to RGB to prevent mode issues
         img = img.convert("RGB")
 
-        # Save image in a valid format for MoviePy
+        # Save the image as PNG to a temporary file
         img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
 
@@ -71,7 +69,7 @@ def download_image_from_url(url):
     except Exception as e:
         logging.error(f"Error downloading image from {url}: {e}")
         return None
-
+        
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
     try:
@@ -173,6 +171,8 @@ if st.button("Create Video & Generate Audio"):
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path:
         video_clips.append(ImageClip(intro_img_path).set_duration(3))
+    else:
+        logging.error("Intro image failed to load.")
 
     # Add User-Defined Middle Sections
     for i in range(st.session_state.num_sections):
@@ -204,3 +204,4 @@ if st.button("Create Video & Generate Audio"):
 
     # Download Audio
     st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
+
