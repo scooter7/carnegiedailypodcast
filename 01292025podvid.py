@@ -42,11 +42,12 @@ if "sections" not in st.session_state:
 if "section_images" not in st.session_state:
     st.session_state.section_images = {}
 if "num_sections" not in st.session_state:
-    st.session_state.num_sections = 3  # Default middle sections
+    st.session_state.num_sections = 3  
 if "audio_path" not in st.session_state:
     st.session_state.audio_path = None
+if "video_path" not in st.session_state:
+    st.session_state.video_path = None
 
-# Function to download an image from a URL
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -57,7 +58,6 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-# Function to scrape text content from a URL
 def scrape_text_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -68,7 +68,6 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
-# Function to generate a dynamic summary script
 def generate_dynamic_summary(all_text, desired_duration):
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
     system_prompt = (
@@ -88,7 +87,6 @@ def generate_dynamic_summary(all_text, desired_duration):
         logging.error(f"Error generating summary: {e}")
         return "[Error generating summary]"
 
-# Function to generate audio using ElevenLabs
 def generate_audio_from_script(script):
     try:
         headers = {
@@ -118,12 +116,10 @@ def generate_audio_from_script(script):
         st.error(f"Exception in ElevenLabs API Call: {str(e)}")
         return None
 
-# UI: Input URLs
 st.title("Custom Video Script and Section Creator")
 urls = st.text_area("Enter URLs (one per line):", height=100).splitlines()
 video_duration = st.number_input("Desired Video Duration (in seconds):", min_value=10, step=5, value=60)
 
-# Generate Master Script
 if st.button("Generate Master Script"):
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
 
@@ -137,12 +133,9 @@ if st.button("Generate Master Script"):
             st.session_state.master_script = full_script
             st.success("✅ Master script generated successfully!")
 
-# Display Master Script & Sections
 if st.session_state.master_script:
     st.subheader("📜 Master Script")
-    st.session_state.master_script = st.text_area(
-        "Generated Master Script (editable):", st.session_state.master_script, height=300
-    )
+    st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
     st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
@@ -154,3 +147,29 @@ if st.session_state.master_script:
         st.session_state.sections.append("")
         st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=section_splits[i] if i < len(section_splits) else "", height=150)
         st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
+
+if st.button("Create Video & Generate Audio"):
+    st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
+    if not st.session_state.audio_path:
+        st.error("Failed to generate audio.")
+        st.stop()
+
+    audio = AudioFileClip(st.session_state.audio_path)
+    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
+
+    for i in range(st.session_state.num_sections):
+        img_url = st.session_state.section_images.get(i, "")
+        if img_url:
+            image = download_image_from_url(img_url)
+            if image:
+                video_clips.append(ImageClip(image).set_duration(5))
+
+    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
+    
+    final_video_path = tempfile.mktemp(suffix=".mp4")
+    combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
+    combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
+
+    st.video(final_video_path)
+    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
+    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
