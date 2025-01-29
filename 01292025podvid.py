@@ -125,9 +125,27 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 
 # Generate Master Script
 if st.button("Generate Master Script"):
+    st.write("🛠️ **Generating script...**")  # Debugging output
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
-    if combined_text:
-        st.session_state.master_script = f"{INTRO_TEXT}\n\n{generate_dynamic_summary(combined_text, video_duration)}\n\n{CONCLUSION_TEXT}"
+
+    if combined_text.strip():
+        generated_summary = generate_dynamic_summary(combined_text, video_duration)
+
+        if not generated_summary or "[Error generating summary]" in generated_summary:
+            st.error("🚨 Error: Unable to generate the summary script.")
+        else:
+            full_script = f"{INTRO_TEXT}\n\n{generated_summary}\n\n{CONCLUSION_TEXT}"
+            st.session_state.master_script = full_script
+            st.success("✅ Master script generated successfully!")
+    else:
+        st.warning("⚠️ No text found from the URLs. Please check your input.")
+
+# Display Master Script
+if st.session_state.master_script:
+    st.subheader("📜 Master Script")
+    st.session_state.master_script = st.text_area(
+        "Generated Master Script (editable):", st.session_state.master_script, height=300
+    )
 
 # Generate Video & Audio
 if st.button("Create Video & Generate Audio"):
@@ -137,31 +155,17 @@ if st.button("Create Video & Generate Audio"):
         st.stop()
 
     audio = AudioFileClip(st.session_state.audio_path)
-
-    # Image setup
-    video_clips = []
-
-    intro_img = download_image_from_url(INTRO_IMAGE_URL)
-    if intro_img:
-        intro_path = tempfile.mktemp(suffix=".png")
-        intro_img.save(intro_path, "PNG")
-        video_clips.append(ImageClip(intro_path).set_duration(3))
+    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
 
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i, "")
         if img_url:
             image = download_image_from_url(img_url)
             if image:
-                img_path = tempfile.mktemp(suffix=".png")
-                image.save(img_path, "PNG")
-                video_clips.append(ImageClip(img_path).set_duration(5))
+                video_clips.append(ImageClip(image).set_duration(5))
 
-    outro_img = download_image_from_url(CONCLUSION_IMAGE_URL)
-    if outro_img:
-        outro_path = tempfile.mktemp(suffix=".png")
-        outro_img.save(outro_path, "PNG")
-        video_clips.append(ImageClip(outro_path).set_duration(3))
-
+    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
+    
     final_video_path = tempfile.mktemp(suffix=".mp4")
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
