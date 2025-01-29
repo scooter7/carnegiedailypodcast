@@ -282,31 +282,27 @@ if st.button("Generate Video"):
         final_script = generate_dynamic_summary_with_duration(combined_text, video_duration, school_name="these amazing schools")
         audio_path = generate_audio_with_openai(final_script, voice="shimmer")
 
-        # Process images and create video clips
+        # Ensure the audio duration matches the user-defined video duration
         if audio_path:
             audio = AudioFileClip(audio_path)
             audio_duration = audio.duration
 
-            # Ensure url_image_map is not empty
-            if url_image_map:
-                for url, images in url_image_map.items():  # Now `images` is properly assigned
-                    for img_url in images:
-                        image = download_image_from_url(img_url)
-                        if image:
-                            st.image(image, caption=f"Processing {img_url}")
-                            temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
-                            try:
-                                # Convert and save as PNG
-                                if image.mode != "RGBA":
-                                    image = image.convert("RGBA")
-                                image.save(temp_image_path, "PNG")
-                                video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-                                if video_clip:
-                                    video_clips.append(video_clip)
-                            except Exception as e:
-                                logging.error(f"Error processing image {img_url}: {e}")
-            else:
-                logging.warning("No images found in url_image_map.")
+            for url, images in url_image_map.items():
+                for img_url in images:
+                    image = download_image_from_url(img_url)
+                    if image:
+                        st.image(image, caption=f"Processing {img_url}")
+                        temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
+                        try:
+                        # Convert and save as PNG
+                        if image.mode != "RGBA":
+                            image = image.convert("RGBA")
+                        image.save(temp_image_path, "PNG")
+                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+                        if video_clip:
+                            video_clips.append(video_clip)
+                        except Exception as e:
+                            logging.error(f"Error processing image {img_url}: {e}")
 
             if video_clips:
                 final_video_path = tempfile.mktemp(suffix=".mp4")
