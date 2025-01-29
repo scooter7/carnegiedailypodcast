@@ -223,9 +223,14 @@ if st.button("Create Video"):
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
-    # Display and download
+    # Display and download buttons
     st.video(final_video_path)
     st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+
+    # Add download button for audio-only file
+    st.download_button("Download Audio Only", open(audio_path, "rb"), "audio.mp3", mime="audio/mp3")
+
+    # Download script
     st.download_button(
         "Download Script",
         f"{INTRO_TEXT}\n\n" + "\n\n".join(st.session_state.sections) + f"\n\n{CONCLUSION_TEXT}",
