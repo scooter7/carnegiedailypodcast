@@ -42,25 +42,32 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
-for img_url in images:
-    image = download_image_from_url(img_url)
-    if image:
-        st.image(image, caption=f"Processing {img_url}")
-        temp_image_path = tempfile.mktemp(suffix=".jpg")  # Default to JPEG
-        try:
-            # Convert and save to ensure compatibility
-            if image.mode in ("RGBA", "P"):
-                image = image.convert("RGB")
-            image.save(temp_image_path, format="JPEG")
+# Ensure url_image_map is defined and contains valid image URLs
+if url_image_map:
+    for url, images in url_image_map.items():  # Now `images` is properly assigned
+        if images:  # Ensure images exist before iterating
+            for img_url in images:
+                image = download_image_from_url(img_url)
+                if image:
+                    st.image(image, caption=f"Processing {img_url}")
+                    temp_image_path = tempfile.mktemp(suffix=".png")  # Always use PNG
+                    try:
+                        # Convert and save as PNG
+                        if image.mode != "RGBA":
+                            image = image.convert("RGBA")
+                        image.save(temp_image_path, "PNG")
 
-            # Process the image for video clip creation
-            video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
-            if video_clip:
-                video_clips.append(video_clip)
-        except Exception as e:
-            logging.error(f"Error saving or processing image {img_url}: {e}")
-    else:
-        logging.warning(f"Failed to download or process image from {img_url}")
+                        # Create video clip
+                        video_clip = create_video_clip_with_effect(temp_image_path, effect_option, duration=5)
+                        if video_clip:
+                            video_clips.append(video_clip)
+                    except Exception as e:
+                        logging.error(f"Error processing image {img_url}: {e}")
+        else:
+            logging.warning(f"No images found for URL: {url}")
+else:
+    logging.warning("No valid images found in url_image_map.")
+
 
 # Function to dynamically generate a summary script based on duration
 def generate_dynamic_summary_with_duration(all_text, desired_duration, school_name="the highlighted schools"):
