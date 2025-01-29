@@ -48,9 +48,9 @@ def url_input_fields():
     urls = []
     with st.container():
         st.subheader("Enter Page URLs")
-        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1, key="num_urls")
         for i in range(num_urls):
-            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL", key=f"url_{i}")
             if url:
                 urls.append(url)
     return urls
