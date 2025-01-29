@@ -26,7 +26,7 @@ INTRO_TEXT = (
 INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg?raw=true"
 CONCLUSION_TEXT = (
     "Don’t forget, you can connect with any of our featured colleges by visiting CollegeXpress.com. "
-    "Just click the green, 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
+    "Just click the green 'Yes, connect me!' buttons when you see them on the site, and then the schools you’re interested in will reach out to you with more information! "
     "You can find the links to these schools in the description below. Don’t forget to follow us on social media @CollegeXpress. "
     "Until next time, happy college hunting!"
 )
@@ -41,6 +41,8 @@ if "section_images" not in st.session_state:
     st.session_state.section_images = {}
 if "num_sections" not in st.session_state:
     st.session_state.num_sections = 3  # Default middle sections
+if "audio_path" not in st.session_state:
+    st.session_state.audio_path = None
 
 # Function to scrape text content from a URL
 def scrape_text_from_url(url):
@@ -132,16 +134,17 @@ if st.session_state.master_script:
     st.subheader("Master Script")
     st.session_state.master_script = st.text_area("Generated Master Script (editable):", st.session_state.master_script, height=300)
 
-# Generate Video
-if st.button("Create Video"):
-    video_clips = []
-    audio_path = generate_audio_from_script(st.session_state.master_script)
+# Generate Video & Audio
+if st.button("Create Video & Generate Audio"):
+    st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
     
-    if not audio_path:
+    if not st.session_state.audio_path:
         st.error("Failed to generate audio for the script.")
         st.stop()
 
-    audio = AudioFileClip(audio_path)
+    audio = AudioFileClip(st.session_state.audio_path)
+    video_clips = []
+
     intro_img = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img:
         intro_path = tempfile.mktemp(suffix=".png")
@@ -152,5 +155,28 @@ if st.button("Create Video"):
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
-    st.video(final_video_path)
-    st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
+    st.session_state.video_path = final_video_path
+
+# Display video & provide download options
+if "video_path" in st.session_state and st.session_state.video_path:
+    st.subheader("Generated Video")
+    st.video(st.session_state.video_path)
+
+    st.download_button(
+        "Download Video", 
+        open(st.session_state.video_path, "rb"), 
+        file_name="generated_video.mp4",
+        mime="video/mp4"
+    )
+
+# Provide MP3 download button
+if "audio_path" in st.session_state and st.session_state.audio_path:
+    st.subheader("Generated Audio")
+    st.audio(st.session_state.audio_path)  # Play audio preview in Streamlit
+
+    st.download_button(
+        "Download Audio (MP3)", 
+        open(st.session_state.audio_path, "rb"), 
+        file_name="generated_audio.mp3",
+        mime="audio/mp3"
+    )
