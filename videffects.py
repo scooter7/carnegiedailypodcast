@@ -27,6 +27,7 @@ def scrape_text_from_url(url):
         logging.error(f"Error scraping text from {url}: {e}")
         return ""
 
+# Function to download an image from a URL
 def download_image_from_url(url):
     try:
         response = requests.get(url, timeout=10)
@@ -42,8 +43,38 @@ def download_image_from_url(url):
         logging.error(f"Error downloading image from {url}: {e}")
         return None
 
+# Function to get URLs from user input
+def url_input_fields():
+    urls = []
+    with st.container():
+        st.subheader("Enter Page URLs")
+        num_urls = st.number_input("Number of URLs", min_value=1, value=1, step=1)
+        for i in range(num_urls):
+            url = st.text_input(f"URL #{i + 1}", placeholder="Enter a webpage URL")
+            if url:
+                urls.append(url)
+    return urls
+
+# Function to get image URLs for each webpage
+def image_input_fields(urls):
+    url_image_map = {}
+    for i, url in enumerate(urls):
+        st.subheader(f"Images for {url}")
+        num_images = st.number_input(
+            f"Number of images for URL #{i + 1}", min_value=1, value=1, step=1, key=f"num_images_{i}"
+        )
+        images = []
+        for j in range(num_images):
+            image_url = st.text_input(
+                f"Image #{j + 1} for URL #{i + 1}", placeholder="Enter an image URL", key=f"image_url_{i}_{j}"
+            )
+            if image_url:
+                images.append(image_url)
+        url_image_map[url] = images
+    return url_image_map
+
 # Ensure urls is defined before using it
-urls = url_input_fields() if "urls" not in locals() else urls
+urls = url_input_fields()
 
 # Ensure url_image_map is defined before using it
 url_image_map = {}
