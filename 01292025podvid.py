@@ -149,11 +149,7 @@ if st.session_state.master_script:
     st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
     middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
-    
-    if middle_content:
-        section_splits = split_text_evenly(middle_content, st.session_state.num_sections)
-    else:
-        section_splits = [""] * st.session_state.num_sections
+    section_splits = split_text_evenly(middle_content, st.session_state.num_sections)
 
     st.session_state.sections = section_splits
 
@@ -168,6 +164,22 @@ if st.button("Create Video & Generate Audio"):
         st.error("Failed to generate audio.")
         st.stop()
 
-    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
+    audio = AudioFileClip(st.session_state.audio_path)
+    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
 
-st.success("✅ Sections are now correctly assigned! Each section will have content.")
+    for i in range(st.session_state.num_sections):
+        img_url = st.session_state.section_images.get(i, "")
+        if img_url:
+            image = download_image_from_url(img_url)
+            if image:
+                video_clips.append(ImageClip(image).set_duration(5))
+
+    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
+
+    final_video_path = tempfile.mktemp(suffix=".mp4")
+    combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
+    combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
+
+    st.video(final_video_path)
+    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
+    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
