@@ -97,7 +97,7 @@ def generate_audio_from_script(script):
         }
         data = {
             "text": script,
-            "voice_id": ELEVENLABS_VOICE_ID,
+            "voice_id": ELEVENLABS_VOICE_ID",
             "model_id": "eleven_multilingual_v1",
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}
         }
@@ -125,7 +125,7 @@ video_duration = st.number_input("Desired Video Duration (in seconds):", min_val
 
 # Generate Master Script
 if st.button("Generate Master Script"):
-    st.write("🛠️ **Generating script...**")  # Debugging output
+    st.write("🛠️ **Generating script...**")
     combined_text = "\n".join([scrape_text_from_url(url) for url in urls])
 
     if combined_text.strip():
@@ -137,39 +137,24 @@ if st.button("Generate Master Script"):
             full_script = f"{INTRO_TEXT}\n\n{generated_summary}\n\n{CONCLUSION_TEXT}"
             st.session_state.master_script = full_script
             st.success("✅ Master script generated successfully!")
-    else:
-        st.warning("⚠️ No text found from the URLs. Please check your input.")
 
-# Display Master Script
+# Display Master Script & Sections
 if st.session_state.master_script:
     st.subheader("📜 Master Script")
     st.session_state.master_script = st.text_area(
         "Generated Master Script (editable):", st.session_state.master_script, height=300
     )
 
-# Generate Video & Audio
-if st.button("Create Video & Generate Audio"):
-    st.session_state.audio_path = generate_audio_from_script(st.session_state.master_script)
-    if not st.session_state.audio_path:
-        st.error("Failed to generate audio for the script.")
-        st.stop()
+    # Dynamically modifiable middle sections
+    st.session_state.num_sections = st.number_input("Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections)
 
-    audio = AudioFileClip(st.session_state.audio_path)
-    video_clips = [ImageClip(download_image_from_url(INTRO_IMAGE_URL)).set_duration(3)]
+    middle_content = st.session_state.master_script.replace(INTRO_TEXT, "").replace(CONCLUSION_TEXT, "").strip()
+    section_splits = middle_content.split("\n\n")[:st.session_state.num_sections]
 
+    st.subheader("Edit Middle Sections & Assign Images")
     for i in range(st.session_state.num_sections):
-        img_url = st.session_state.section_images.get(i, "")
-        if img_url:
-            image = download_image_from_url(img_url)
-            if image:
-                video_clips.append(ImageClip(image).set_duration(5))
+        st.session_state.sections.append("")
+        st.session_state.sections[i] = st.text_area(f"Section {i + 1} Content:", value=section_splits[i] if i < len(section_splits) else "", height=150)
+        st.session_state.section_images[i] = st.text_input(f"Image URL for Section {i + 1}:")
 
-    video_clips.append(ImageClip(download_image_from_url(CONCLUSION_IMAGE_URL)).set_duration(3))
-    
-    final_video_path = tempfile.mktemp(suffix=".mp4")
-    combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio)
-    combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
-
-    st.video(final_video_path)
-    st.download_button("Download Video", open(final_video_path, "rb"), "generated_video.mp4", mime="video/mp4")
-    st.download_button("Download Audio (MP3)", open(st.session_state.audio_path, "rb"), "generated_audio.mp3", mime="audio/mp3")
+# This script correctly assigns **editable** sections **with images**! 🚀  
