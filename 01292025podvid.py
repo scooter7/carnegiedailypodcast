@@ -19,7 +19,7 @@ openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Constants
 WORDS_PER_MINUTE = 150
-ELEVENLABS_VOICE_ID = "NYy9s57OPECPcDJavL3T"
+ELEVENLABS_VOICE_ID = "tnSpp4vdxKPjI9w0GnoV"
 
 INTRO_TEXT = "Welcome to the CollegeXpress Campus Countdown! Let’s get started!"
 INTRO_IMAGE_URL = "https://github.com/scooter7/carnegiedailypodcast/blob/main/cx.jpg?raw=true"
