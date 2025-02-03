@@ -13,7 +13,7 @@ from PIL import Image
 from io import BytesIO
 import logging
 import os
-import re  # For splitting conversation segments
+import re  # For splitting text into paragraphs
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
@@ -24,9 +24,9 @@ openai.api_key = st.secrets["OPENAI_API_KEY"]
 
 # Constants
 WORDS_PER_MINUTE = 150
-# Default voice IDs
-VOICE_1_ID = "kPzsL2i3teMYv0FxEYQ6"  # (Lisa's voice)
-VOICE_2_ID = "edRtkKm7qEwZ8pH9ggtf"    # (Tony's voice)
+# Voice IDs (Lisa and Tony)
+VOICE_1_ID = "kPzsL2i3teMYv0FxEYQ6"  # Lisa's voice
+VOICE_2_ID = "edRtkKm7qEwZ8pH9ggtf"    # Tony's voice
 
 # Default texts for single host mode
 DEFAULT_INTRO_TEXT = "Welcome to the CollegeXpress Campus Countdown! Let’s get started!"
@@ -103,13 +103,15 @@ def scrape_text_from_url(url):
 
 def generate_dynamic_summary(all_text, desired_duration):
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
-    # Use conversational names when in co-host mode.
     if st.session_state.get("host_mode") == "Both (Co-host - Conversational)":
+        # In co-host mode, ask for a natural conversation without explicit speaker labels.
         system_prompt = (
-            f"As two podcast hosts named Lisa and Tony engaging in a natural, conversational back-and-forth, "
-            f"generate a dynamic script that presents a lively discussion based on the following text. "
-            f"The conversation should alternate naturally between Lisa and Tony, including greetings, questions, "
-            f"and responses, and feel like a real conversation. Make sure each speaking turn starts with either 'Lisa:' or 'Tony:' and keep the entire conversation within {max_words} words."
+            f"As two podcast hosts, Lisa and Tony, engage in a natural, conversational dialogue, "
+            f"generate a dynamic conversation based on the following text. Do not include explicit labels like 'Lisa:' or 'Tony:' before each turn. "
+            f"Ensure that the conversation is structured in clear paragraphs and that it includes an introduction and a conclusion. "
+            f"Specifically, the first paragraph must serve as an introduction welcoming the listeners (for example: '{DEFAULT_INTRO_TEXT}'), "
+            f"and the final paragraph must serve as a conclusion (for example: '{DEFAULT_CONCLUSION_TEXT}'). "
+            f"Keep the entire conversation within {max_words} words."
         )
     else:
         system_prompt = f"As a show host, summarize the text to fit within {max_words} words."
@@ -164,8 +166,8 @@ if st.button("Generate Master Script"):
     if combined_text.strip():
         generated_summary = generate_dynamic_summary(combined_text, video_duration)
         if st.session_state.host_mode == "Both (Co-host - Conversational)":
-            # In conversational mode, the generated script should already include dialogue labels.
-            full_script = generated_summary
+            # Force inclusion of the required intro and conclusion.
+            full_script = f"{DEFAULT_INTRO_TEXT}\n\n{generated_summary}\n\n{DEFAULT_CONCLUSION_TEXT}"
         else:
             full_script = f"{DEFAULT_INTRO_TEXT}\n\n{generated_summary}\n\n{DEFAULT_CONCLUSION_TEXT}"
         st.session_state.master_script = full_script
@@ -182,6 +184,7 @@ if st.session_state.master_script:
         "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
     )
 
+    # For non co-host mode, extract the middle content from the script.
     if st.session_state.host_mode == "Both (Co-host - Conversational)":
         middle_content = st.session_state.master_script
     else:
@@ -216,7 +219,7 @@ if st.button("Create Video"):
     # Audio Generation
     # ----------------------------
     if st.session_state.host_mode != "Both (Co-host - Conversational)":
-        # Single voice mode
+        # Single voice mode.
         if st.session_state.host_mode.startswith("Voice 1"):
             selected_voice_id = VOICE_1_ID
         elif st.session_state.host_mode.startswith("Voice 2"):
@@ -229,43 +232,59 @@ if st.button("Create Video"):
             st.stop()
         audio_clip = AudioFileClip(audio_path)
     else:
-        # In co-host conversational mode, split the script into segments.
-        # Each segment should begin with "Lisa:" or "Tony:".
-        segments = re.split(r'(?=Lisa:|Tony:)', st.session_state.master_script)
+        # In co-host conversational mode, we assume the master script is structured into paragraphs:
+        # Paragraph 1: Introduction (must be DEFAULT_INTRO_TEXT)
+        # Paragraphs 2...N-1: Conversation (without explicit speaker names)
+        # Paragraph N: Conclusion (must be DEFAULT_CONCLUSION_TEXT)
+        segments = st.session_state.master_script.split("\n\n")
         segments = [seg.strip() for seg in segments if seg.strip()]
-        if not segments:
-            st.error("No conversation segments detected. Ensure your script contains 'Lisa:' and 'Tony:' labels.")
+        if len(segments) < 3:
+            st.error("The script must contain at least three paragraphs: introduction, conversation, and conclusion.")
             st.stop()
         audio_segments = []
-        for seg in segments:
-            if seg.startswith("Lisa:"):
-                voice_id = VOICE_1_ID
-            elif seg.startswith("Tony:"):
-                voice_id = VOICE_2_ID
-            else:
-                voice_id = VOICE_1_ID  # Fallback
+
+        # Introduction: always use Lisa's voice.
+        intro_audio_path = generate_audio_from_script(segments[0], VOICE_1_ID)
+        if not intro_audio_path:
+            st.error("Failed to generate audio for the introduction.")
+            st.stop()
+        audio_segments.append(AudioFileClip(intro_audio_path))
+
+        # Conversation segments (middle paragraphs): alternate voices.
+        conversation_segments = segments[1:-1]
+        # Alternate starting with Tony for the first conversation paragraph.
+        for i, seg in enumerate(conversation_segments):
+            voice_id = VOICE_2_ID if i % 2 == 0 else VOICE_1_ID
             seg_audio_path = generate_audio_from_script(seg, voice_id)
             if not seg_audio_path:
-                st.error(f"Failed to generate audio for segment: {seg}")
+                st.error(f"Failed to generate audio for conversation segment: {seg}")
                 st.stop()
             audio_segments.append(AudioFileClip(seg_audio_path))
+
+        # Conclusion: always use Tony's voice.
+        conclusion_audio_path = generate_audio_from_script(segments[-1], VOICE_2_ID)
+        if not conclusion_audio_path:
+            st.error("Failed to generate audio for the conclusion.")
+            st.stop()
+        audio_segments.append(AudioFileClip(conclusion_audio_path))
+
         audio_clip = concatenate_audioclips(audio_segments)
 
     total_audio_duration = audio_clip.duration
-    total_sections = st.session_state.num_sections + 2  # Intro and Outro images
+    total_sections = st.session_state.num_sections + 2  # Intro and Outro images.
     section_duration = total_audio_duration / total_sections
 
     # ----------------------------
     # Video Image Clips
     # ----------------------------
-    # Add intro image
+    # Add intro image.
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path and os.path.exists(intro_img_path):
         video_clips.append(ImageClip(intro_img_path).set_duration(section_duration).set_fps(24))
     else:
         logging.error("Intro image failed to load.")
 
-    # Add user-defined middle section images
+    # Add user-defined middle section images.
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i)
         img_path = download_image_from_url(img_url) if img_url else None
@@ -274,7 +293,7 @@ if st.button("Create Video"):
         else:
             logging.error(f"Invalid or missing image for section {i + 1}")
 
-    # Add conclusion image
+    # Add conclusion image.
     outro_img_path = download_image_from_url(CONCLUSION_IMAGE_URL)
     if outro_img_path and os.path.exists(outro_img_path):
         video_clips.append(ImageClip(outro_img_path).set_duration(section_duration).set_fps(24))
