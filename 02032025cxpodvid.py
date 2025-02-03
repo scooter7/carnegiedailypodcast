@@ -3,11 +3,15 @@ from bs4 import BeautifulSoup
 import requests
 import openai
 import tempfile
-from moviepy.editor import ImageClip, concatenate_videoclips, AudioFileClip, concatenate_audioclips
+from moviepy.editor import (
+    ImageClip,
+    concatenate_videoclips,
+    AudioFileClip,
+    concatenate_audioclips,
+)
 from PIL import Image
 from io import BytesIO
 import logging
-import json
 import os
 import re  # For splitting conversation segments
 
@@ -21,8 +25,8 @@ openai.api_key = st.secrets["OPENAI_API_KEY"]
 # Constants
 WORDS_PER_MINUTE = 150
 # Default voice IDs
-VOICE_1_ID = "kPzsL2i3teMYv0FxEYQ6"  # e.g., female voice 1
-VOICE_2_ID = "edRtkKm7qEwZ8pH9ggtf"    # e.g., female voice 2
+VOICE_1_ID = "kPzsL2i3teMYv0FxEYQ6"  # (Lisa's voice)
+VOICE_2_ID = "edRtkKm7qEwZ8pH9ggtf"    # (Tony's voice)
 
 # Default texts for single host mode
 DEFAULT_INTRO_TEXT = "Welcome to the CollegeXpress Campus Countdown! Let’s get started!"
@@ -70,18 +74,14 @@ def download_image_from_url(url):
     if not url:
         logging.error("Empty image URL received.")
         return None
-
     try:
         response = requests.get(url, timeout=10)
         response.raise_for_status()
-
         img = Image.open(BytesIO(response.content))
         if img.mode != "RGBA":
-            img = img.convert("RGBA")  # Ensure RGBA for transparency
-
+            img = img.convert("RGBA")
         img_path = tempfile.mktemp(suffix=".png")
         img.save(img_path, format="PNG")
-
         if os.path.exists(img_path):
             return img_path
         else:
@@ -103,13 +103,13 @@ def scrape_text_from_url(url):
 
 def generate_dynamic_summary(all_text, desired_duration):
     max_words = (desired_duration // 60) * WORDS_PER_MINUTE
+    # Use conversational names when in co-host mode.
     if st.session_state.get("host_mode") == "Both (Co-host - Conversational)":
         system_prompt = (
-            f"As two podcast hosts engaging in a natural, conversational back-and-forth, "
+            f"As two podcast hosts named Lisa and Tony engaging in a natural, conversational back-and-forth, "
             f"generate a dynamic script that presents a lively discussion based on the following text. "
-            f"The conversation should alternate naturally between Host A and Host B, including greetings, questions, "
-            f"and responses, and feel like a real conversation. Make sure each speaking turn is prefixed with 'Host A:' or 'Host B:'. "
-            f"Keep the entire conversation within {max_words} words."
+            f"The conversation should alternate naturally between Lisa and Tony, including greetings, questions, "
+            f"and responses, and feel like a real conversation. Make sure each speaking turn starts with either 'Lisa:' or 'Tony:' and keep the entire conversation within {max_words} words."
         )
     else:
         system_prompt = f"As a show host, summarize the text to fit within {max_words} words."
@@ -138,7 +138,6 @@ def generate_audio_from_script(script, voice_id):
         }
         url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
         response = requests.post(url, headers=headers, json=data)
-        
         if response.status_code == 200:
             audio_path = tempfile.mktemp(suffix=".mp3")
             with open(audio_path, "wb") as f:
@@ -165,7 +164,7 @@ if st.button("Generate Master Script"):
     if combined_text.strip():
         generated_summary = generate_dynamic_summary(combined_text, video_duration)
         if st.session_state.host_mode == "Both (Co-host - Conversational)":
-            # In conversational mode, the generated script should already include conversation labels.
+            # In conversational mode, the generated script should already include dialogue labels.
             full_script = generated_summary
         else:
             full_script = f"{DEFAULT_INTRO_TEXT}\n\n{generated_summary}\n\n{DEFAULT_CONCLUSION_TEXT}"
@@ -183,7 +182,6 @@ if st.session_state.master_script:
         "Number of Middle Sections:", min_value=1, step=1, value=st.session_state.num_sections
     )
 
-    # For co-host mode, let the conversation script be fully editable.
     if st.session_state.host_mode == "Both (Co-host - Conversational)":
         middle_content = st.session_state.master_script
     else:
@@ -194,7 +192,6 @@ if st.session_state.master_script:
             middle_content = st.session_state.master_script
 
     sentences = middle_content.split(". ")
-    num_sentences = len(sentences)
     num_sections = st.session_state.num_sections
     section_splits = [" ".join(sentences[i::num_sections]) for i in range(num_sections)]
     if len(st.session_state.sections) != num_sections:
@@ -215,36 +212,38 @@ if st.session_state.master_script:
 if st.button("Create Video"):
     video_clips = []
 
+    # ----------------------------
     # Audio Generation
+    # ----------------------------
     if st.session_state.host_mode != "Both (Co-host - Conversational)":
+        # Single voice mode
         if st.session_state.host_mode.startswith("Voice 1"):
             selected_voice_id = VOICE_1_ID
         elif st.session_state.host_mode.startswith("Voice 2"):
             selected_voice_id = VOICE_2_ID
         else:
             selected_voice_id = VOICE_1_ID
-
         audio_path = generate_audio_from_script(st.session_state.master_script, selected_voice_id)
         if not audio_path:
             st.error("Failed to generate audio for the script.")
             st.stop()
         audio_clip = AudioFileClip(audio_path)
     else:
-        # In co-host mode, split the conversation into segments.
-        # Expect each speaking turn to be prefixed with "Host A:" or "Host B:".
-        segments = re.findall(r'(Host [AB]:.*?)(?=Host [AB]:|$)', st.session_state.master_script, re.DOTALL)
+        # In co-host conversational mode, split the script into segments.
+        # Each segment should begin with "Lisa:" or "Tony:".
+        segments = re.split(r'(?=Lisa:|Tony:)', st.session_state.master_script)
+        segments = [seg.strip() for seg in segments if seg.strip()]
         if not segments:
-            st.error("No conversation segments detected. Ensure your script contains 'Host A:' and 'Host B:' labels.")
+            st.error("No conversation segments detected. Ensure your script contains 'Lisa:' and 'Tony:' labels.")
             st.stop()
         audio_segments = []
         for seg in segments:
-            seg = seg.strip()
-            if seg.startswith("Host A:"):
+            if seg.startswith("Lisa:"):
                 voice_id = VOICE_1_ID
-            elif seg.startswith("Host B:"):
+            elif seg.startswith("Tony:"):
                 voice_id = VOICE_2_ID
             else:
-                voice_id = VOICE_1_ID  # fallback
+                voice_id = VOICE_1_ID  # Fallback
             seg_audio_path = generate_audio_from_script(seg, voice_id)
             if not seg_audio_path:
                 st.error(f"Failed to generate audio for segment: {seg}")
@@ -256,6 +255,9 @@ if st.button("Create Video"):
     total_sections = st.session_state.num_sections + 2  # Intro and Outro images
     section_duration = total_audio_duration / total_sections
 
+    # ----------------------------
+    # Video Image Clips
+    # ----------------------------
     # Add intro image
     intro_img_path = download_image_from_url(INTRO_IMAGE_URL)
     if intro_img_path and os.path.exists(intro_img_path):
@@ -263,7 +265,7 @@ if st.button("Create Video"):
     else:
         logging.error("Intro image failed to load.")
 
-    # Add middle section images
+    # Add user-defined middle section images
     for i in range(st.session_state.num_sections):
         img_url = st.session_state.section_images.get(i)
         img_path = download_image_from_url(img_url) if img_url else None
@@ -287,7 +289,16 @@ if st.button("Create Video"):
     combined_clip = concatenate_videoclips(video_clips, method="compose").set_audio(audio_clip)
     combined_clip.write_videofile(final_video_path, codec="libx264", audio_codec="aac", fps=24)
 
+    # ----------------------------
+    # Write final audio to a file for download
+    # ----------------------------
+    temp_audio_file = tempfile.mktemp(suffix=".mp3")
+    audio_clip.write_audiofile(temp_audio_file, fps=44100)
+
+    # ----------------------------
+    # Display and Download Buttons
+    # ----------------------------
     st.video(final_video_path)
     st.download_button("Download Video", open(final_video_path, "rb"), "video.mp4")
-    st.download_button("Download Audio Only", open(audio_clip.filename, "rb"), "audio.mp3", mime="audio/mp3")
+    st.download_button("Download Audio Only", open(temp_audio_file, "rb"), "audio.mp3", mime="audio/mp3")
     st.download_button("Download Script", st.session_state.master_script, "script.txt")
